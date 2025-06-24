@@ -1,17 +1,24 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
+//#include <mcp2515.h>
+//#include <SPI.h>
 
 #define DISPLAY_POWER_PIN 15
 #define DISPLAY_BACKLIGHT 38
 #define DISPLAY_HIGHT 170
 #define DISPLAY_WIDTH 320
 
+
 TFT_eSPI tft = TFT_eSPI();
-int i = 1;
-bool alive = 0;
+//MCP2515 can(13);     // Set CS of MCP2515_CAN module to Pin 13
+
+unsigned long DisplayRefreshLastRun = 0;
+const long DisplayRefreshInterval = 1000; //Milliseconds
 
 // put function declarations here:
-void AliveIcon();
+void DisplayRefresh();
+void SetCANStatusInidcator(uint16_t color = TFT_RED){tft.drawCircle(188, 156, 8, color);}
+void SetALIVEStatusInidcator(uint16_t color = TFT_RED){tft.drawCircle(85, 156, 8, color);}
 
 void setup() {
   // put your setup code here, to run once:
@@ -32,14 +39,14 @@ void setup() {
   tft.setTextColor(TFT_DARKCYAN);
   tft.setTextSize(2);
   // Titel
-  tft.drawString("Topolino Info Display v0.0", 0, 0);
+  tft.drawString("Topolino Info Display vDEV", 0, 0);
   tft.fillRectHGradient(0, 20, 320, 3, TFT_WHITE, TFT_RED);
   // Statusleiste
   tft.fillRectHGradient(0, 142, 320, 1, TFT_WHITE, TFT_RED);
   tft.drawString("Alive:", 0, 150);
-  tft.drawCircle(85, 156, 8, TFT_RED);
+  SetALIVEStatusInidcator();
   tft.drawString("CAN:", 130, 150);
-  tft.drawCircle(188, 156, 8, TFT_RED);
+  SetCANStatusInidcator();
   
   //Ganganzeige
   tft.fillRect(265, 23, 1, 77, TFT_DARKGREY);
@@ -65,28 +72,37 @@ void setup() {
   tft.setTextSize(2);
   tft.setTextColor(TFT_WHITE);
 
+  // CAN Module
+  /* can.reset();
+  can.setBitrate(CAN_500KBPS);
+
+  if ( can.getStatus() ) {
+    Serial.println("CAN-Module Initialized Successfully!");
+    can.setListenOnlyMode();
+    SetCANStatusInidcator(TFT_DARKGREY);
+    } 
+  else {
+    Serial.println("Error Initializing CAN-Module...");
+    } */
 }
 
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  Serial.println("Still alive.");    // Print a label
-  // tft.fillRect(0,30,100,20,TFT_BLACK);
-  // tft.drawString(String(i), 0, 30);
-  // i++;
-  AliveIcon();
-  delay(1000);
+  unsigned long currentMillis = millis();
+  Serial.println("Still alive - " + currentMillis);    // Print a label
+  if (currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval){
+    DisplayRefreshLastRun = currentMillis;
+    DisplayRefresh();
+  }
+  delay(25); //loop delay to 
 }
 
 // put function definitions here:
-void AliveIcon(){
-  if (alive) {
-    tft.fillCircle(85, 156, 8,  TFT_GREEN);
-    alive = false;
-    }
-  else {
-    tft.fillCircle(85, 156, 8, TFT_WHITE);
-    alive = true;
-    }
+void DisplayRefresh(){
+  Serial.println("Display Refresh - "); 
+  //Statusleiste
+  //if (tft.readPixel(85, 156) == TFT_WHITE) {SetALIVEStatusInidcator(TFT_GREEN);}
+  //else {SetALIVEStatusInidcator(TFT_WHITE);}
+
 
 }

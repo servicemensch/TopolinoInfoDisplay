@@ -1,19 +1,28 @@
 # Topolino Info Display
 
 ## Hardware:
-LilyGo T-Display S3
+[LilyGo T-Display S3](https://lilygo.cc/products/t-display-s3?variant=42284559827125)
 - ESP32
 - 1,9" 8Bit LCD Screen
 
-MCP 2515 Can Bus module
+1x [MCP 2515 Can Bus module](https://www.az-delivery.de/products/mcp2515-can-bus-modul-1)
 
 ### Wireing:
 ![fizing diagram](info/Wireing.png)
 
+|  | T-Display S3 | MCP2515_CAN |
+|-|-|-|
+| Power 5V | 5V | VCC |
+| Ground | GND | GND |
+| Chip select | PIN 13 | CS|
+| SPI MISO | PIN 12 | SO |
+| SPI MOSI | PIN 11 | SI |
+| Serial clock | PIN 10 | SCK |
+| Interrupt | PIN 3 | INT |
 
 ## Software:
 Build as PlatformIO project in Visual Studio Code.
 
 ### Libraries:
 - [TFT_sSPI](https://doc-tft-espi.readthedocs.io/)
-- [Arduino MCP2515](https://github.com/autowp/arduino-mcp2515/)
+- [autowp MCP2515](https://github.com/autowp/arduino-mcp2515/)
