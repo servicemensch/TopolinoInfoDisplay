@@ -14,10 +14,10 @@
 |-|-|-|
 | Power 5V | 5V | VCC |
 | Ground | GND | GND |
-| Chip select | PIN 13 | CS|
-| SPI MISO | PIN 12 | SO |
+| Chip select | PIN 10 | CS|
+| SPI MISO | PIN 13 | SO |
 | SPI MOSI | PIN 11 | SI |
-| Serial clock | PIN 10 | SCK |
+| Serial clock | PIN 12 | SCK |
 | Interrupt | PIN 3 | INT |
 
 ## Software:
