@@ -7,6 +7,9 @@ LilyGo T-Display S3
 
 MCP 2515 Can Bus module
 
+### Wireing
+![fizing diagram](info/Wireing.png)
+
 ## Software
 Build as PlatformIO project in Visual Studio Code
 ### Libraries
