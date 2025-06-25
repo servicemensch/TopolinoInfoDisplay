@@ -1,0 +1,5 @@
+// Topolino Info Display config file
+
+// WIFI Settings
+const char* YourWIFI_SSID = "not_found";
+const char* YourWIFI_Passphrase = "unknown";
