@@ -4,7 +4,7 @@
 #include <SPI.h>
 #include <WiFi.h>
 
-#include "../config.h"
+#include "../config/config.h"
 
 #define DISPLAY_POWER_PIN 15
 #define DISPLAY_BACKLIGHT 38
