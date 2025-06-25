@@ -3,8 +3,7 @@
 #include <mcp2515.h>
 #include <SPI.h>
 #include <WiFi.h>
-
-#include "../config/config.h"
+#include <HTTPClient.h>
 
 #define DISPLAY_POWER_PIN 15
 #define DISPLAY_BACKLIGHT 38
@@ -15,19 +14,45 @@
 TFT_eSPI tft = TFT_eSPI();
 MCP2515 can(SS);     // Set CS of MCP2515_CAN module to Pin 10
 
+#include "../config/config.h"
+
+//Loops
 unsigned long DisplayRefreshLastRun = 0;
 const long DisplayRefreshInterval = 500; //Milliseconds
+unsigned long SendDataLastRun = 0;
+const long SendDataInterval = 10000; //Milliseconds
+
+
+// CAN values
+int Value_ECU_ODO = -1;
+int Value_ECU_Speed = -1;
+int Value_Charging_RemainingTime = -1;
+float Value_12VBattery = -1;
+float Value_Battery_Temp1 = -1;
+float Value_Battery_Temp2 = -1;
+float Value_Battery_Volt = -1;
+float Value_Battery_Current = -1;
+int Value_Battery_SoC = -1;
+char* Value_Display_Gear = "?";
+int Value_Display_RemainingDistance = -1;
+int Value_Display_Break = -1;
+int Value_Display_Ready = -1;
+int Value_Status_Brake = -1;
 
 // put function declarations here:
-void DisplayRefresh();
 bool CANCheckMessage();
 bool WIFIConnect();
 bool WIFICheckConnection();
 void WIFIDisconnect();
-void SetALIVEStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(82, 156, 8, color); }
-void SetCANStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(155, 156, 8, color); }
-void SetWIFIStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(245, 156, 8, color); }
-void SetTxStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(308, 156, 8, color); }
+void DisplayCreateUI();
+void DisplayRefresh();
+void DebugFakeValues();
+bool SendDataViaREST();
+
+void SetALIVEStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(82, 157, 8, color); }
+void SetCANStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(155, 157, 8, color); }
+void SetWIFIStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(245, 157, 8, color); }
+void SetTxStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(308, 157, 8, color); }
 
 void setup() {
   // put your setup code here, to run once:
@@ -44,43 +69,8 @@ void setup() {
   tft.init();
   tft.setRotation(7);
   tft.fillScreen(TFT_BLACK);
-
-  tft.setTextColor(TFT_DARKCYAN);
-  tft.setTextSize(2);
-  // Titel
-  tft.drawString("Topolino Info Display vDEV", 0, 0);
-  tft.fillRectHGradient(0, 20, 320, 3, TFT_WHITE, TFT_RED);
-  // Statusleiste
-  tft.fillRectHGradient(0, 142, 320, 1, TFT_WHITE, TFT_RED);
-  tft.drawString("Alive:", 0, 150);
-  SetALIVEStatusInidcator();
-  tft.drawString("CAN:", 100, 150);
-  SetCANStatusInidcator();
-  tft.drawString("WIFI:", 175, 150);
-  SetWIFIStatusInidcator();
-  tft.drawString("Tx:", 263, 150);
-  SetTxStatusInidcator();
   
-  //Ganganzeige
-  tft.fillRect(265, 23, 1, 77, TFT_DARKGREY);
-  tft.setTextSize(1);
-  tft.drawString("Gear:", 270, 25);
-  tft.setTextSize(7);
-  tft.setTextColor(TFT_WHITE);
-  tft.drawString("N", 275, 42);
-
-  // Stromabnahme
-  tft.fillRect(0, 100, 320, 1, TFT_DARKGREY);
-  tft.fillRect(110, 100, 2, 42, TFT_WHITE);
-  tft.fillRectHGradient(10, 106, 100, 30, TFT_DARKGREEN, TFT_GREEN);
-  tft.fillRectHGradient(112, 106, 200, 30, TFT_YELLOW, TFT_RED);
-  tft.setTextSize(3);
-  tft.setTextColor(TFT_WHITE);
-  tft.drawString("-10,2 kW", 130, 110);
-
-  // 12V Spannung
-  // 45V Temp
-  // 45V SoC
+  DisplayCreateUI();
 
   // Text Defaults
   tft.setTextSize(2);
@@ -101,6 +91,9 @@ void setup() {
 
   // WIFI
   WIFIConnect();
+
+  // Debug
+  DebugFakeValues();
 }
 
 
@@ -111,24 +104,21 @@ void loop() {
     DisplayRefreshLastRun = currentMillis;
     DisplayRefresh();
     WIFICheckConnection();
+    DebugFakeValues();
+  }
+
+  if (currentMillis - SendDataLastRun >= SendDataInterval){
+    SendDataLastRun = currentMillis;
+    SendDataViaREST();
   }
 
   CANCheckMessage();
 
-  //Debug
-  tft.fillRect(0, 30, 260, 60, TFT_DARKGREY);
-  tft.drawString(String(currentMillis), 0, 30);
-  tft.drawString(String(can.getStatus()), 0, 50);
- 
   delay(250); //loop delay
 }
 
 // put function definitions here:
-void DisplayRefresh(){
-  Serial.println("Display Refresh"); 
-  //Statusleiste
-  if (tft.readPixel(85, 156) == 58623) {SetALIVEStatusInidcator(TFT_GREEN);} else {SetALIVEStatusInidcator(TFT_WHITE);}
-}
+
 
 bool CANCheckMessage(){
   Serial.println("CAN check message"); 
@@ -137,8 +127,6 @@ bool CANCheckMessage(){
     Serial.println("CAN Message recived - ID: " + String(canMsg.can_id)); 
     Serial.println("CAN Message recived - DLC: " + String(canMsg.can_dlc));
     Serial.println("CAN Message recived - Data: " + String(canMsg.data[0]) + " " + String(canMsg.data[1]) + " " + String(canMsg.data[2]) + " " + String(canMsg.data[3]) + " " + String(canMsg.data[4]) + " " + String(canMsg.data[5]) + " " + String(canMsg.data[6]) + " " + String(canMsg.data[7]) + " " + String(canMsg.data[8]));
-    tft.drawString(String(canMsg.can_id), 0, 70);
-    tft.drawString(String(canMsg.can_dlc), 100, 70);
     
     switch (canMsg.can_id) {
       case 0x581:
@@ -165,7 +153,7 @@ bool CANCheckMessage(){
     }
 
     //Statusleiste
-    if (tft.readPixel(188, 156) == 58623) {SetCANStatusInidcator(TFT_GREEN);} else {SetCANStatusInidcator(TFT_WHITE);}
+    if (tft.readPixel(155, 157) == 58623) {SetCANStatusInidcator(TFT_GREEN);} else {SetCANStatusInidcator(TFT_WHITE);}
     return true;
   }
   else {
@@ -221,3 +209,159 @@ void WIFIDisconnect(){
   WiFi.disconnect();
   SetWIFIStatusInidcator(TFT_DARKGREY);
 }
+
+void DisplayCreateUI(){
+  Serial.println("Disaply Create UI");
+  // Titel
+  tft.setTextColor(TFT_DARKCYAN);
+  tft.setTextSize(2);
+  tft.drawString("Topolino Info Display vDEV", 0, 0);
+  tft.fillRectHGradient(0, 20, 320, 3, TFT_WHITE, TFT_RED);
+
+  // Statusleiste
+  tft.fillRectHGradient(0, 142, 320, 1, TFT_WHITE, TFT_RED);
+  tft.drawString("Alive:", 0, 150);
+  SetALIVEStatusInidcator();
+  tft.drawString("CAN:", 100, 150);
+  SetCANStatusInidcator();
+  tft.drawString("WIFI:", 175, 150);
+  SetWIFIStatusInidcator();
+  tft.drawString("Tx:", 263, 150);
+  SetTxStatusInidcator();
+  
+  //Resthöhe:  21 bis 141 = 120px
+
+  // 45V Temp
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_DARKCYAN);
+  tft.drawString("Temp 1:", 0, 25);
+  tft.drawString("Temp 2:", 0, 64);
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_WHITE);
+  tft.drawString(String(Value_Battery_Temp1, 1) + " C", 20, 37);
+  tft.drawString(String(Value_Battery_Temp2, 1) + " C", 20, 76);
+
+  // 12V Spannung
+  tft.fillRect(135, 23, 1, 77, TFT_DARKGREY);
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_DARKCYAN);
+  tft.drawString("12V Batt:", 140, 25);
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_WHITE);
+  tft.drawString(String(Value_12VBattery, 1) + "V", 150, 37);
+  
+  // 45V SoC
+  tft.fillRect(135, 61, 130, 1, TFT_DARKGREY);
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_DARKCYAN);
+  tft.drawString("SoC:", 140, 64);
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_WHITE);
+  tft.drawString(String(Value_Battery_SoC) + "%", 160, 76);
+
+  //Ganganzeige
+  tft.fillRect(265, 23, 1, 77, TFT_DARKGREY);
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_DARKCYAN);
+  tft.drawString("Gear:", 270, 25);
+  tft.setTextSize(7);
+  tft.setTextColor(TFT_WHITE);
+  tft.drawString(Value_Display_Gear, 275, 42);
+
+  // Stromabnahme
+  tft.fillRect(0, 100, 320, 1, TFT_DARKGREY);
+  tft.fillRect(110, 100, 2, 42, TFT_WHITE);
+  tft.fillRectHGradient(10, 106, 100, 30, TFT_DARKGREEN, TFT_GREEN);
+  tft.fillRectHGradient(112, 106, 200, 30, TFT_YELLOW, TFT_RED);
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_WHITE);
+  tft.drawString(String(Value_Battery_Current, 1) + " A", 130, 110);
+  tft.setTextSize(2);
+  tft.drawString(String(Value_Battery_Volt, 1) + "V", 20, 115);
+}
+
+void DisplayRefresh(){
+  Serial.println("Display Refresh"); 
+  //Statusleiste
+  if (tft.readPixel(82, 157) == 58623) {SetALIVEStatusInidcator(TFT_GREEN);} else {SetALIVEStatusInidcator(TFT_WHITE);}
+
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_WHITE);
+
+  // 45V Temp
+  tft.fillRect(0, 36, 133, 24, TFT_BLACK);
+  tft.fillRect(0, 75, 133, 24, TFT_BLACK);
+  tft.drawString(String(Value_Battery_Temp1, 1) + " C", 20, 37);
+  tft.drawString(String(Value_Battery_Temp2, 1) + " C", 20, 76);
+
+  // 12V Batt
+  tft.fillRect(145, 36, 118, 24, TFT_BLACK);
+  tft.drawString(String(Value_12VBattery, 1) + "V", 150, 37);
+
+  // SoC
+  tft.fillRect(145, 75, 118, 24, TFT_BLACK);
+  tft.drawString(String(Value_Battery_SoC) + "%", 160, 76);
+  
+  // Gear
+  tft.fillRect(275, 41, 44, 58, TFT_BLACK);
+  tft.setTextSize(7);
+  tft.drawString(Value_Display_Gear, 275, 42);
+
+  // Stromverbrauch
+  int gradientLenght = 0;
+  tft.fillRect(10, 106, 100, 30, TFT_BLACK);
+  tft.fillRect(112, 106, 200, 30, TFT_BLACK);
+  if (Value_Battery_Current > 0) {
+    gradientLenght = (int)Value_Battery_Current;
+    if (gradientLenght > 100) {gradientLenght = 100;}
+    tft.fillRectHGradient(110-gradientLenght, 106, gradientLenght, 30, TFT_DARKGREEN, TFT_GREEN);
+  }
+  else if (Value_Battery_Current < 0)  {
+    gradientLenght = (int)Value_Battery_Current * -1;
+    if (gradientLenght > 200) {gradientLenght = 200;}
+    tft.fillRectHGradient(112, 106, gradientLenght, 30, TFT_YELLOW, TFT_RED);
+  }
+
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(3);
+  tft.drawString(String(Value_Battery_Current, 1) + " A", 130, 110);
+  tft.setTextSize(2);
+  tft.drawString(String(Value_Battery_Volt, 1) + "V", 20, 115); 
+}
+
+void DebugFakeValues() {
+  Value_12VBattery = random(0, 150) / 10;
+  Value_Battery_SoC = random(0, 100);
+  Value_Display_Gear = "D";
+  Value_Battery_Temp1 = random(-90, 450) / 10;
+  Value_Battery_Temp2 = random(-90, 450) / 10;
+  Value_Battery_Volt = random(210, 560) / 10;
+  Value_Battery_Current = random(-2050, 1050) / 10;
+}
+
+bool SendDataViaREST() {
+  Serial.println("Send Data via REST");
+  SetTxStatusInidcator(TFT_BLUE);
+
+  HTTPClient http;
+  String URL = "http://10.0.1.51:8087/set/0_userdata.0.topolino.SoC?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password + "&ack=true&value=" + String(Value_Battery_SoC);
+  Serial.print("URL: ");
+  Serial.println(URL);
+
+  http.begin(URL);
+  int httpResponseCode = http.GET();
+
+  if (httpResponseCode == 200) {
+    SetTxStatusInidcator(TFT_GREEN);
+    return true;
+  }
+  else {
+    SetTxStatusInidcator(TFT_RED);
+    Serial.print("HTTP Response Code: ");
+    Serial.println(httpResponseCode);
+    return false;
+  }
+
+  http.end();
+}
+
