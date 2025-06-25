@@ -16,7 +16,7 @@ TFT_eSPI tft = TFT_eSPI();
 MCP2515 can(SS);     // Set CS of MCP2515_CAN module to Pin 10
 
 unsigned long DisplayRefreshLastRun = 0;
-const long DisplayRefreshInterval = 1000; //Milliseconds
+const long DisplayRefreshInterval = 500; //Milliseconds
 
 // put function declarations here:
 void DisplayRefresh();
@@ -24,9 +24,10 @@ bool CANCheckMessage();
 bool WIFIConnect();
 bool WIFICheckConnection();
 void WIFIDisconnect();
-void SetALIVEStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(85, 156, 8, color); }
-void SetCANStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(188, 156, 8, color); }
-void SetWIFIStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(295, 156, 8, color); }
+void SetALIVEStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(82, 156, 8, color); }
+void SetCANStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(155, 156, 8, color); }
+void SetWIFIStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(245, 156, 8, color); }
+void SetTxStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(308, 156, 8, color); }
 
 void setup() {
   // put your setup code here, to run once:
@@ -53,10 +54,12 @@ void setup() {
   tft.fillRectHGradient(0, 142, 320, 1, TFT_WHITE, TFT_RED);
   tft.drawString("Alive:", 0, 150);
   SetALIVEStatusInidcator();
-  tft.drawString("CAN:", 130, 150);
+  tft.drawString("CAN:", 100, 150);
   SetCANStatusInidcator();
-  tft.drawString("WIFI:", 230, 150);
+  tft.drawString("WIFI:", 175, 150);
   SetWIFIStatusInidcator();
+  tft.drawString("Tx:", 263, 150);
+  SetTxStatusInidcator();
   
   //Ganganzeige
   tft.fillRect(265, 23, 1, 77, TFT_DARKGREY);
@@ -96,10 +99,8 @@ void setup() {
     Serial.println("ERROR: Initializing CAN-Module failed!");
     }
 
-  //WIFI
+  // WIFI
   WIFIConnect();
-  delay(5000);
-  WIFIDisconnect();
 }
 
 
@@ -109,6 +110,7 @@ void loop() {
   if (currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval){
     DisplayRefreshLastRun = currentMillis;
     DisplayRefresh();
+    WIFICheckConnection();
   }
 
   CANCheckMessage();
@@ -118,7 +120,7 @@ void loop() {
   tft.drawString(String(currentMillis), 0, 30);
   tft.drawString(String(can.getStatus()), 0, 50);
  
-  delay(250); //loop delay to 
+  delay(250); //loop delay
 }
 
 // put function definitions here:
@@ -181,6 +183,8 @@ bool WIFIConnect(){
   
   SetWIFIStatusInidcator(TFT_BLUE);
   // Activate WIFI
+  WiFi.setHostname("TopolinoInfoDisplay");
+  WiFi.setAutoReconnect(true);
   WiFi.mode(WIFI_STA);
   WiFi.begin(YourWIFI_SSID, YourWIFI_Passphrase);  
 
