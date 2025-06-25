@@ -2,13 +2,15 @@
 #include <TFT_eSPI.h>
 #include <mcp2515.h>
 #include <SPI.h>
+#include <WiFi.h>
+
+#include "../config.h"
 
 #define DISPLAY_POWER_PIN 15
 #define DISPLAY_BACKLIGHT 38
 #define DISPLAY_HIGHT 170
 #define DISPLAY_WIDTH 320
 #define CAN_INTERRUPT 3
-
 
 TFT_eSPI tft = TFT_eSPI();
 MCP2515 can(SS);     // Set CS of MCP2515_CAN module to Pin 10
@@ -18,9 +20,13 @@ const long DisplayRefreshInterval = 1000; //Milliseconds
 
 // put function declarations here:
 void DisplayRefresh();
-bool CheckCanMessage();
-void SetALIVEStatusInidcator(uint16_t color = TFT_RED){tft.fillCircle(85, 156, 8, color);}
+bool CANCheckMessage();
+bool WIFIConnect();
+bool WIFICheckConnection();
+void WIFIDisconnect();
+void SetALIVEStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(85, 156, 8, color); }
 void SetCANStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(188, 156, 8, color); }
+void SetWIFIStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(295, 156, 8, color); }
 
 void setup() {
   // put your setup code here, to run once:
@@ -49,6 +55,8 @@ void setup() {
   SetALIVEStatusInidcator();
   tft.drawString("CAN:", 130, 150);
   SetCANStatusInidcator();
+  tft.drawString("WIFI:", 230, 150);
+  SetWIFIStatusInidcator();
   
   //Ganganzeige
   tft.fillRect(265, 23, 1, 77, TFT_DARKGREY);
@@ -85,8 +93,13 @@ void setup() {
     SetCANStatusInidcator(TFT_DARKGREY);
     } 
   else {
-    Serial.println("Error Initializing CAN-Module...");
+    Serial.println("ERROR: Initializing CAN-Module failed!");
     }
+
+  //WIFI
+  WIFIConnect();
+  delay(5000);
+  WIFIDisconnect();
 }
 
 
@@ -98,7 +111,7 @@ void loop() {
     DisplayRefresh();
   }
 
-  CheckCanMessage();
+  CANCheckMessage();
 
   //Debug
   tft.fillRect(0, 30, 260, 60, TFT_DARKGREY);
@@ -115,8 +128,8 @@ void DisplayRefresh(){
   if (tft.readPixel(85, 156) == 58623) {SetALIVEStatusInidcator(TFT_GREEN);} else {SetALIVEStatusInidcator(TFT_WHITE);}
 }
 
-bool CheckCanMessage(){
-  Serial.println("Check CAN message"); 
+bool CANCheckMessage(){
+  Serial.println("CAN check message"); 
   struct can_frame canMsg;
   if ( can.readMessage(&canMsg) == MCP2515::ERROR_OK ){
     Serial.println("CAN Message recived - ID: " + String(canMsg.can_id)); 
@@ -157,4 +170,50 @@ bool CheckCanMessage(){
     // Serial.println("no CAN Message found");
     return false;
     }
+}
+
+bool WIFIConnect(){
+  Serial.print("WIFI Connect to SSID: "); 
+  Serial.println(YourWIFI_SSID);
+  
+  // Check if already connected
+  if (WIFICheckConnection()) {return true; }
+  
+  SetWIFIStatusInidcator(TFT_BLUE);
+  // Activate WIFI
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(YourWIFI_SSID, YourWIFI_Passphrase);  
+
+  int i = 0;
+  //Wait for connect
+  while (WiFi.status () != WL_CONNECTED) {
+    delay(1000);
+    Serial.print("WIFI Connecting....");
+    Serial.println(WiFi.status());
+    i++;
+    if ( i > 5) { break; }
+  }
+
+  return WIFICheckConnection();
+}
+
+bool WIFICheckConnection() { 
+  if (WiFi.status () == WL_CONNECTED) {
+    Serial.print("WIFI Connected! IP: ");
+    Serial.println(WiFi.localIP());
+    SetWIFIStatusInidcator(TFT_GREEN);
+    return true;
+  }
+  else {
+    Serial.print("WIFI NOT connected! Status: ");
+    Serial.println(WiFi.status());
+    SetWIFIStatusInidcator(TFT_RED);
+    return false;
+  }
+}
+
+void WIFIDisconnect(){
+  Serial.println("WIFI disconnect");
+  WiFi.disconnect();
+  SetWIFIStatusInidcator(TFT_DARKGREY);
 }
