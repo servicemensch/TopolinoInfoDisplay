@@ -25,4 +25,4 @@ Build as PlatformIO project in Visual Studio Code.
 
 ### Libraries:
 - [TFT_sSPI](https://doc-tft-espi.readthedocs.io/)
-- [autowp MCP2515](https://github.com/autowp/arduino-mcp2515/)
+- [ACAN2515](https://github.com/pierremolinaro/acan2515/tree/master)
