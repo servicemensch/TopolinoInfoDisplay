@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ACAN2515.h>
+#include <spi.h>
 
 #define DISPLAY_POWER_PIN 15
 #define DISPLAY_BACKLIGHT 38
@@ -161,12 +162,13 @@ void CANCheckMessage(){
         case 0x582:
           Serial.println("CAN: OBC");
           break;
-        case 0x593:
+        case 0x593: {
           Serial.println("CAN: 12V Batt");
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
-          unsigned int  value = (canMsg.data[1]<<8) + canMsg.data[0];
+          unsigned int value = (canMsg.data[1] << 8) + canMsg.data[0];
           Serial.println("CAN Value: " + String(value));
           Value_12VBattery = (unsigned int)canMsg.data16 * 0.01;
+          }
           break;
         case 0x594:
           Serial.println("CAN: MainBatt Temp");
