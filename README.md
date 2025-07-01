@@ -24,5 +24,5 @@
 Build as PlatformIO project in Visual Studio Code.
 
 ### Libraries:
-- [TFT_sSPI](https://doc-tft-espi.readthedocs.io/)
+- [TFT_sSPI](https://doc-tft-espi.readthedocs.io/) - Take care to select the right display un User_Setup_Select.h
 - [ACAN2515](https://github.com/pierremolinaro/acan2515/tree/master)
