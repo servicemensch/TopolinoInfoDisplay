@@ -5,7 +5,7 @@
 #include <ACAN2515.h>
 #include <spi.h>
 
-#define VERSION 0.01
+#define VERSION 0.02
 #define DISPLAY_POWER_PIN 15
 #define DISPLAY_BACKLIGHT 38
 #define DISPLAY_HIGHT 170
@@ -15,7 +15,7 @@
 #define CAN_MOSI 11
 #define CAN_MISO 13
 #define CAN_SCK 12
-#define CAN_16MHz 16UL * 1000UL * 1000UL
+#define CAN_8MHz 8UL * 1000UL * 1000UL
 #define CAN_500Kbs 500UL * 1000UL
 
 TFT_eSPI tft = TFT_eSPI();
@@ -25,9 +25,9 @@ ACAN2515 can((int)CAN_CS, SPI, (int)CAN_INTERRUPT);
 
 //Loops
 unsigned long DisplayRefreshLastRun = 0;
-const long DisplayRefreshInterval = 500; //Milliseconds
+const long DisplayRefreshInterval = 0.5 * 1000; 
 unsigned long SendDataLastRun = 0;
-const long SendDataInterval = 10000; //Milliseconds
+const long SendDataInterval = 10 * 1000; 
 
 // CAN values
 int Value_ECU_ODO = -1;
@@ -50,7 +50,7 @@ bool CanInterrupt = false;
 
 // put function declarations here:
 void CANCheckMessage();
-void IRAM_ATTR CanInterruptISR();
+void CanInterruptISR();
 bool WIFIConnect();
 bool WIFICheckConnection();
 void WIFIDisconnect();
@@ -91,7 +91,7 @@ void setup() {
   // CAN Module
   SetCANStatusInidcator(TFT_BLUE);
   SPI.begin(CAN_SCK, CAN_MISO, CAN_MOSI);
-  ACAN2515Settings CanSettings (CAN_16MHz, CAN_500Kbs);
+  ACAN2515Settings CanSettings (CAN_8MHz, CAN_500Kbs);
   CanSettings.mRequestedMode = ACAN2515Settings::ListenOnlyMode ;
   
   int CanError = can.begin(CanSettings, CanInterruptISR);
@@ -115,16 +115,16 @@ void setup() {
 // Main Loop ===========================================================================================
 void loop() {
   unsigned long currentMillis = millis();
-  Serial.println(" - Tick: " + String(currentMillis));
+  //Serial.println(" - Tick: " + String(currentMillis));
   if (currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval){
     DisplayRefreshLastRun = currentMillis;
     DisplayRefresh();
-    WIFICheckConnection();
     //DebugFakeValues();
   }
 
   if (currentMillis - SendDataLastRun >= SendDataInterval){
     SendDataLastRun = currentMillis;
+    WIFICheckConnection();
     SendDataSimpleAPI();
   }
 
@@ -132,24 +132,28 @@ void loop() {
     SetCANStatusInidcator(TFT_YELLOW);
     CANCheckMessage();
   }
-  
+  CANCheckMessage();
 
   delay(250); //loop delay
 }
 
 // put function definitions here: ======================================================================
-void IRAM_ATTR CanInterruptISR() {
+void CanInterruptISR() {
   CanInterrupt = true;
 }
 
 void CANCheckMessage(){
   Serial.println("CAN check message"); 
   CanInterrupt = false;
+  //Debug
+  Value_Battery_Temp1++;
 
   CANMessage canMsg;
-  if (can.available()) {
+  if (can.receive(canMsg)) {
     SetCANStatusInidcator(TFT_GREEN);
-    can.receive(canMsg);
+    //Debug
+    Value_Battery_Temp2++;
+    //can.receive(canMsg);
     Serial.println("CAN Message recived - ID: " + String(canMsg.id, HEX)); 
     Serial.println("CAN Message recived - DLC: " + String(canMsg.len));
     Serial.println("CAN Message recived - RTR:" + String(canMsg.rtr));
@@ -191,7 +195,8 @@ void CANCheckMessage(){
     
   }
   else {
-    SetCANStatusInidcator(TFT_CYAN);
+    Serial.println("No CAN Message available");
+    SetCANStatusInidcator(TFT_YELLOW);
   }
 }
 
@@ -382,6 +387,7 @@ bool SendDataSimpleAPI() {
   Serial.println(URL);
 
   http.begin(URL);
+  http.setConnectTimeout(3 * 1000); //3 Sekunden
   int httpResponseCode = http.GET();
 
   if (httpResponseCode == 200) {
