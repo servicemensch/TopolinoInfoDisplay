@@ -68,6 +68,10 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
 
+  // CAN Module pins
+  pinMode(CAN_CS, OUTPUT);
+  pinMode(CAN_INTERRUPT, INPUT_PULLUP);
+
   // Turn on display power
   pinMode(DISPLAY_POWER_PIN, OUTPUT);
   pinMode(DISPLAY_BACKLIGHT, OUTPUT);
