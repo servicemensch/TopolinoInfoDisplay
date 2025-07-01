@@ -5,6 +5,7 @@
 #include <ACAN2515.h>
 #include <spi.h>
 
+#define VERSION 0.01
 #define DISPLAY_POWER_PIN 15
 #define DISPLAY_BACKLIGHT 38
 #define DISPLAY_HIGHT 170
@@ -108,7 +109,7 @@ void setup() {
   WIFIConnect();
 
   // Debug
-  // DebugFakeValues();
+  //DebugFakeValues();
 }
 
 // Main Loop ===========================================================================================
@@ -128,6 +129,7 @@ void loop() {
   }
 
   if (CanInterrupt) {
+    SetCANStatusInidcator(TFT_YELLOW);
     CANCheckMessage();
   }
   
@@ -138,13 +140,12 @@ void loop() {
 // put function definitions here: ======================================================================
 void IRAM_ATTR CanInterruptISR() {
   CanInterrupt = true;
-  //SetCANStatusInidcator(TFT_YELLOW);
 }
 
 void CANCheckMessage(){
   Serial.println("CAN check message"); 
   CanInterrupt = false;
-  
+
   CANMessage canMsg;
   if (can.available()) {
     SetCANStatusInidcator(TFT_GREEN);
@@ -247,7 +248,7 @@ void DisplayCreateUI(){
   // Titel
   tft.setTextColor(TFT_DARKCYAN);
   tft.setTextSize(2);
-  tft.drawString("Topolino Info Display vDEV", 0, 0);
+  tft.drawString("Topolino Info Display " + String(VERSION), 0, 0);
   tft.fillRectHGradient(0, 20, 320, 3, TFT_WHITE, TFT_RED);
 
   // Statusleiste
