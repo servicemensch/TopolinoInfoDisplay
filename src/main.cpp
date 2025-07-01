@@ -108,7 +108,7 @@ void setup() {
   WIFIConnect();
 
   // Debug
-  DebugFakeValues();
+  // DebugFakeValues();
 }
 
 // Main Loop ===========================================================================================
@@ -119,7 +119,7 @@ void loop() {
     DisplayRefreshLastRun = currentMillis;
     DisplayRefresh();
     WIFICheckConnection();
-    DebugFakeValues();
+    //DebugFakeValues();
   }
 
   if (currentMillis - SendDataLastRun >= SendDataInterval){
@@ -138,13 +138,13 @@ void loop() {
 // put function definitions here: ======================================================================
 void IRAM_ATTR CanInterruptISR() {
   CanInterrupt = true;
-  SetCANStatusInidcator(TFT_YELLOW);
+  //SetCANStatusInidcator(TFT_YELLOW);
 }
 
 void CANCheckMessage(){
   Serial.println("CAN check message"); 
   CanInterrupt = false;
-
+  
   CANMessage canMsg;
   if (can.available()) {
     SetCANStatusInidcator(TFT_GREEN);
@@ -190,7 +190,7 @@ void CANCheckMessage(){
     
   }
   else {
-    SetCANStatusInidcator(TFT_RED);
+    SetCANStatusInidcator(TFT_CYAN);
   }
 }
 
