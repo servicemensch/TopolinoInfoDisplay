@@ -98,7 +98,7 @@ void setup() {
   ACAN2515Settings CanSettings (CAN_8MHz, CAN_500Kbs);
   CanSettings.mRequestedMode = ACAN2515Settings::ListenOnlyMode ;
   
-  int CanError = can.begin(CanSettings, CanInterruptISR);
+  int CanError = can.begin(CanSettings, [] { can.isr () ; });
 
   if ( CanError == 0) {
     Serial.println("CAN-Module Initialized Successfully!");
@@ -132,7 +132,7 @@ void loop() {
     SendDataSimpleAPI();
   }
 
-  if (CanInterrupt) {
+  if (can.available() || CanInterrupt) {
     SetCANStatusInidcator(TFT_YELLOW);
     CANCheckMessage();
   }
