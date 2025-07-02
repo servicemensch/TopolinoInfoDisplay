@@ -221,10 +221,12 @@ void CANCheckMessage(){
           Serial.println("CAN: MainBatt Voltage");
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
           // Current
-          Serial.println ("DEBUG: Data1: " + String(canMsg.data[1],  HEX) + " - Data0: " + String(canMsg.data[0], HEX));  
-          int value1 = (canMsg.data[1] << 8) | canMsg.data[0];
+          int value1 = (canMsg.data[1] << 8 | canMsg.data[0]);
+          if (value1 > 32767) {
+            value1 = value1 - 65536; // Convert to signed int
+            }
           //Serial.println("Byte7: " + String(value1.readBytes[7], Binary_h));
-          Serial.println("- CAN Value Current: " + String(value1, HEX));
+          Serial.println("- CAN Value Current: " + String(value1));
           Value_Battery_Current = value1 / 10;
 
           //Voltage
