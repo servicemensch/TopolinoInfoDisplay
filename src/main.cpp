@@ -137,7 +137,7 @@ void loop() {
     CANCheckMessage();
   }
   
-  delay(250); //loop delay
+  delay(50); //loop delay
 }
 
 // put function definitions here: ======================================================================
@@ -205,14 +205,14 @@ void CANCheckMessage(){
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
           
           // Temp 1
-          int value = canMsg.data[0];
-          Serial.println("- CAN Value Temp1: " + String(value));
-          Value_Battery_Temp1 = value;
+          int value1 = canMsg.data[0];
+          Serial.println("- CAN Value Temp1: " + String(value1));
+          Value_Battery_Temp1 = value1;
 
           //Temp 2
-          int value = canMsg.data[3];
-          Serial.println("- CAN Value Temp2: " + String(value));
-          Value_Battery_Temp2 = value;
+          int value2 = canMsg.data[3];
+          Serial.println("- CAN Value Temp2: " + String(value2));
+          Value_Battery_Temp2 = value2;
           }          
           break;
           
@@ -221,19 +221,19 @@ void CANCheckMessage(){
           Serial.println("CAN: MainBatt Voltage");
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
           // Current  
-          int value = (canMsg.data[1] << 8) | canMsg.data[0];
-          Serial.println("- CAN Value Current: " + String(value));
-          Value_Battery_Current = value * 0.1;
+          int value1 = (canMsg.data[1] << 8) | canMsg.data[0];
+          Serial.println("- CAN Value Current: " + String(value1));
+          Value_Battery_Current = value1 * 0.1;
 
           //Voltage
-          value = (canMsg.data[3] << 8) | canMsg.data[2];
-          Serial.println("- CAN Value Voltage: " + String(value));
-          Value_Battery_Volt = value * 0.01;
+          int value2 = (canMsg.data[3] << 8) | canMsg.data[2];
+          Serial.println("- CAN Value Voltage: " + String(value2));
+          Value_Battery_Volt = value2 * 0.01;
 
           // SoC
-          unsigned int value = canMsg.data[5];
-          Serial.println("- CAN Value SoC: " + String(value));
-          Value_Battery_SoC = value;
+          unsigned int value3 = canMsg.data[5];
+          Serial.println("- CAN Value SoC: " + String(value3));
+          Value_Battery_SoC = value3;
           }
           
           break;
@@ -245,22 +245,22 @@ void CANCheckMessage(){
           // Gear
           if (canMsg.data[0] == 0x00) {
             Value_Display_Gear = "P";
-          }
+            }
           else if (canMsg.data[0] == 0x01) {
             Value_Display_Gear = "R";
-          }
+            }
           else if (canMsg.data[0] == 0x02) {
             Value_Display_Gear = "N";
-          }
+            }
           else if (canMsg.data[0] == 0x03) {
             Value_Display_Gear = "D";
-          }
+            }
           else if (canMsg.data[0] == 0x04) {
             Value_Display_Gear = "B";
-          }
+            }
           else {
             Value_Display_Gear = "?";
-          }
+            }
           Serial.println("- CAN Value Gear: " + String(Value_Display_Gear));
 
           // Remaining Distance
@@ -272,28 +272,29 @@ void CANCheckMessage(){
           if (canMsg.data[3] == 0x01) {
             Serial.println("- CAN Value Break: ON");
             Value_Display_Break = 1;
-          }
+            }
           else if (canMsg.data[3] == 0x00) {
             Serial.println("- CAN Value Break: OFF");
             Value_Display_Break = 0;
-          }
+            }
           else {
             Serial.println("- CAN Value Break: UNKNOWN");
             Value_Display_Break = -1;
-          }
+            }
           
           //Ready
           if (canMsg.data[2] == 0x01) {
             Serial.println("- CAN Value Ready: ON");
             Value_Display_Ready = 1;
-          }
+            }
           else if (canMsg.data[2] == 0x00) {
             Serial.println("- CAN Value Ready: OFF");
             Value_Display_Ready = 0;
-          }
+            }
           else {
             Serial.println("- CAN Value Ready: UNKNOWN");
             Value_Display_Ready = -1;
+            }
           }
           break;
 
@@ -306,14 +307,15 @@ void CANCheckMessage(){
           if (canMsg.data[0] == 0x01) {
             Serial.println("- CAN Value Brake: ON");
             Value_Status_Brake = 1;
-          }
+            }
           else if (canMsg.data[0] == 0x00) {
             Serial.println("- CAN Value Brake: OFF");
             Value_Status_Brake = 0;
-          }
+            }
           else {
             Serial.println("- CAN Value Brake: UNKNOWN");
             Value_Status_Brake = -1;
+            }
           }
           break;
       }
