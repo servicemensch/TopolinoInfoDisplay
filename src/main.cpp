@@ -39,11 +39,11 @@ float Value_Battery_Temp2 = -1;
 float Value_Battery_Volt = -1;
 float Value_Battery_Current = -1;
 int Value_Battery_SoC = -1;
-char* Value_Display_Gear = "?";
+const char* Value_Display_Gear = "?";
 int Value_Display_RemainingDistance = -1;
 int Value_Display_Break = -1;
 int Value_Display_Ready = -1;
-int Value_Status_Brake = -1;
+int Value_Status_Handbrake = -1;
 
 // globals
 bool CanInterrupt = false;
@@ -167,7 +167,6 @@ void CANCheckMessage(){
         // Electronic control Unit (ECU)
         case 0x581: {
           SetCANStatusInidcator(TFT_BLUE);
-          //Serial.println("- CAN: ECU");
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
           // Odo
           unsigned int value1 = canMsg.data[6] << 16 | canMsg.data[5] << 8 | canMsg.data[4];
@@ -184,7 +183,6 @@ void CANCheckMessage(){
         // Onboard Charger
         case 0x582: {
           SetCANStatusInidcator(TFT_BLUE);
-          //Serial.println("CAN: OBC");
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
           
           // Remaining Time
@@ -197,7 +195,6 @@ void CANCheckMessage(){
         // 12V Battery
         case 0x593: {
           SetCANStatusInidcator(TFT_BLUE);
-          //Serial.println("CAN: 12V Batt");
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
           unsigned int value = (canMsg.data[1] << 8) | canMsg.data[0];
           //Serial.println("- CAN Value 12V: " + String(value));
@@ -208,7 +205,6 @@ void CANCheckMessage(){
         // Main Battery Temperature
         case 0x594: {
           SetCANStatusInidcator(TFT_BLUE);
-          //Serial.println("CAN: MainBatt Temp");
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
           
           // Temp 1
@@ -226,7 +222,6 @@ void CANCheckMessage(){
         // Main Battery Voltage and Current
         case 0x580: {
           SetCANStatusInidcator(TFT_BLUE);
-          //Serial.println("CAN: MainBatt Voltage");
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
 
           // Current
@@ -254,7 +249,6 @@ void CANCheckMessage(){
         // Display
         case 0x713: {
           SetCANStatusInidcator(TFT_BLUE);
-          //Serial.println("CAN: Display");
           if (!canMsg.len == 7) {Serial.println("CAN: Wrong Lenght"); break;}
 
           // Gear
@@ -280,37 +274,34 @@ void CANCheckMessage(){
 
           // Remaining Distance
           unsigned int value = canMsg.data[0] << 7;
-          Serial.println("- CAN Value Remaining Distance: " + String(value));
+          //Serial.println("- CAN Value Remaining Distance: " + String(value));
           Value_Display_RemainingDistance = value;
 
           // Break indicator
           if (canMsg.data[3] == 0x01) {
-            Serial.println("- CAN Value Break: ON");
             Value_Display_Break = 1;
             }
           else if (canMsg.data[3] == 0x00) {
-            Serial.println("- CAN Value Break: OFF");
             Value_Display_Break = 0;
             }
           else {
-            Serial.println("- CAN Value Break: UNKNOWN");
             Value_Display_Break = -1;
             }
+          //Serial.println("- CAN Value Break: " + String(canMsg.data[3], HEX));
           
           //Ready imndicator
           if (canMsg.data[2] == 0x01) {
-            Serial.println("- CAN Value Ready: ON");
             Value_Display_Ready = 1;
             }
           else if (canMsg.data[2] == 0x00) {
-            Serial.println("- CAN Value Ready: OFF");
             Value_Display_Ready = 0;
             }
           else {
-            Serial.println("- CAN Value Ready: UNKNOWN");
             Value_Display_Ready = -1;
             }
           }
+          //Serial.println("- CAN Value Ready: " + String(canMsg.data[2], HEX));
+
           break;
 
         // Handbreak
@@ -321,18 +312,17 @@ void CANCheckMessage(){
 
           // Brake
           if (canMsg.data[0] == 0x01) {
-            Serial.println("- CAN Value Brake: ON");
-            Value_Status_Brake = 1;
+            Value_Status_Handbrake = 1;
             }
           else if (canMsg.data[0] == 0x00) {
-            Serial.println("- CAN Value Brake: OFF");
-            Value_Status_Brake = 0;
+            Value_Status_Handbrake = 0;
             }
           else {
-            Serial.println("- CAN Value Brake: UNKNOWN");
-            Value_Status_Brake = -1;
+            Value_Status_Handbrake = -1;
             }
           }
+          //Serial.println("- CAN Value Brake: " + String(canMsg.data[0], HEX));
+
           break;
       }
     }
@@ -569,6 +559,6 @@ void SerialPrintValues() {
   Serial.println(" - Display Remaining Distance: " + String(Value_Display_RemainingDistance));
   Serial.println(" - Display Break: " + String(Value_Display_Break));
   Serial.println(" - Display Ready: " + String(Value_Display_Ready));
-  Serial.println(" - Status Brake: " + String(Value_Status_Brake));
+  Serial.println(" - Status Brake: " + String(Value_Status_Handbrake));
   Serial.println("=============================");
 }
