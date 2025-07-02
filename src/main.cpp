@@ -230,10 +230,13 @@ void CANCheckMessage(){
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
 
           // Current
-          Serial.println ("DEBUG: Data1: 0x" + String(canMsg.data[1],  HEX) + String(canMsg.data[0], HEX) + " - " + String(canMsg.data[1], BIN) + String(canMsg.data[0], BIN));  
-          signed int value1 = (signed int)(canMsg.data[1] << 8 | canMsg.data[0]);   
+          int value1 = (canMsg.data[1] << 8 | canMsg.data[0]);
+          if (value1 > 32767) {
+            value1 = value1 - 65536; // Convert to signed int
+            }
+          //Serial.println("Byte7: " + String(value1.readBytes[7], Binary_h));
           Serial.println("- CAN Value Current: " + String(value1));
-          Value_Battery_Current = (float)value1 / 10;
+          Value_Battery_Current = value1 / 10;
 
           //Voltage
           int value2 = (canMsg.data[3] << 8) | canMsg.data[2];
