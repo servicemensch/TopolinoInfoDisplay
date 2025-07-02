@@ -146,7 +146,7 @@ void CanInterruptISR() {
 }
 
 void CANCheckMessage(){
-  Serial.println("CAN check message"); 
+  //Serial.println("CAN check message"); 
   CanInterrupt = false;
 
   CANMessage canMsg;
@@ -165,13 +165,13 @@ void CANCheckMessage(){
           SetCANStatusInidcator(TFT_BLUE);
           Serial.println("- CAN: ECU");
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
-          // O
+          // Odo
           unsigned int value = canMsg.data[6] << 16 | canMsg.data[5] << 8 | canMsg.data[4];
           Serial.println("- CAN Value ODO: " + String(value));
-          Value_ECU_ODO = value * 0.1;
+          Value_ECU_ODO = value / 10;
 
           // Speed 
-          value = canMsg.data[7] << 8 | canMsg.data[8];
+          value = canMsg.data[8] << 8 | canMsg.data[7];
           Serial.println("- CAN Value Speed: " + String(value));          
           Value_12VBattery = value;
           }
@@ -195,7 +195,7 @@ void CANCheckMessage(){
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
           unsigned int value = (canMsg.data[1] << 8) | canMsg.data[0];
           Serial.println("- CAN Value 12V: " + String(value));
-          Value_12VBattery = value * 0.01;
+          Value_12VBattery = value / 100;
           }
           break;
 
@@ -220,10 +220,12 @@ void CANCheckMessage(){
           SetCANStatusInidcator(TFT_BLUE);
           Serial.println("CAN: MainBatt Voltage");
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
-          // Current  
+          // Current
+          Serial.println ("DEBUG: Data1: " + String(canMsg.data[1],  HEX) + " - Data0: " + String(canMsg.data[0], HEX));  
           int value1 = (canMsg.data[1] << 8) | canMsg.data[0];
-          Serial.println("- CAN Value Current: " + String(value1));
-          Value_Battery_Current = value1 * 0.1;
+          //Serial.println("Byte7: " + String(value1.readBytes[7], Binary_h));
+          Serial.println("- CAN Value Current: " + String(value1, HEX));
+          Value_Battery_Current = value1 / 10;
 
           //Voltage
           int value2 = (canMsg.data[3] << 8) | canMsg.data[2];
@@ -232,7 +234,7 @@ void CANCheckMessage(){
 
           // SoC
           unsigned int value3 = canMsg.data[5];
-          Serial.println("- CAN Value SoC: " + String(value3));
+          //Serial.println("- CAN Value SoC: " + String(value3));
           Value_Battery_SoC = value3;
           }
           
@@ -450,7 +452,7 @@ void DisplayCreateUI(){
 }
 
 void DisplayRefresh(){
-  Serial.println("Display Refresh"); 
+  //Serial.println("Display Refresh"); 
   //Statusleiste
   if (tft.readPixel(82, 157) == 58623) {SetALIVEStatusInidcator(TFT_GREEN);} else {SetALIVEStatusInidcator(TFT_WHITE);}
 
@@ -460,8 +462,8 @@ void DisplayRefresh(){
   // 45V Temp
   tft.fillRect(0, 36, 133, 24, TFT_BLACK);
   tft.fillRect(0, 75, 133, 24, TFT_BLACK);
-  tft.drawString(String(Value_Battery_Temp1, 1) + " C", 20, 37);
-  tft.drawString(String(Value_Battery_Temp2, 1) + " C", 20, 76);
+  tft.drawString(String(Value_Battery_Temp1, 0) + " C", 20, 37);
+  tft.drawString(String(Value_Battery_Temp2, 0) + " C", 20, 76);
 
   // 12V Batt
   tft.fillRect(145, 36, 118, 24, TFT_BLACK);
