@@ -47,6 +47,7 @@ int Value_Status_Brake = -1;
 
 // globals
 bool CanInterrupt = false;
+bool TransmitValuesChanged = true;
 
 // put function declarations here:
 void CANCheckMessage();
@@ -58,6 +59,7 @@ void DisplayCreateUI();
 void DisplayRefresh();
 void DebugFakeValues();
 bool SendDataSimpleAPI();
+void SerialPrintValues();
 
 void SetALIVEStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(82, 157, 8, color); }
 void SetCANStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(155, 157, 8, color); }
@@ -123,10 +125,11 @@ void loop() {
   if (currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval){
     DisplayRefreshLastRun = currentMillis;
     DisplayRefresh();
+    SerialPrintValues();
     //DebugFakeValues();
   }
 
-  if (currentMillis - SendDataLastRun >= SendDataInterval){
+  if (currentMillis - SendDataLastRun >= SendDataInterval && TransmitValuesChanged){
     SendDataLastRun = currentMillis;
     WIFICheckConnection();
     SendDataSimpleAPI();
@@ -150,7 +153,7 @@ void CANCheckMessage(){
   CanInterrupt = false;
 
   CANMessage canMsg;
-  if (can.receive(canMsg)) {
+  while (can.receive(canMsg)) {
     SetCANStatusInidcator(TFT_GREEN);
 
     //can.receive(canMsg);
@@ -161,22 +164,24 @@ void CANCheckMessage(){
 
     if (!canMsg.rtr) {
       switch (canMsg.id) {
+        // Electronic control Unit (ECU)
         case 0x581: {
           SetCANStatusInidcator(TFT_BLUE);
           Serial.println("- CAN: ECU");
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
           // Odo
-          unsigned int value = canMsg.data[6] << 16 | canMsg.data[5] << 8 | canMsg.data[4];
-          Serial.println("- CAN Value ODO: " + String(value));
-          Value_ECU_ODO = value / 10;
+          unsigned int value1 = canMsg.data[6] << 16 | canMsg.data[5] << 8 | canMsg.data[4];
+          Serial.println("- CAN Value ODO: " + String(value1));
+          Value_ECU_ODO = (float)value1 / 10;
 
           // Speed 
-          value = canMsg.data[8] << 8 | canMsg.data[7];
+          unsigned int value = canMsg.data[8] << 8 | canMsg.data[7];
           Serial.println("- CAN Value Speed: " + String(value));          
           Value_12VBattery = value;
           }
           break;
 
+        // Onboard Charger
         case 0x582: {
           SetCANStatusInidcator(TFT_BLUE);
           Serial.println("CAN: OBC");
@@ -189,16 +194,18 @@ void CANCheckMessage(){
           }
           break;
 
+        // 12V Battery
         case 0x593: {
           SetCANStatusInidcator(TFT_BLUE);
           Serial.println("CAN: 12V Batt");
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
           unsigned int value = (canMsg.data[1] << 8) | canMsg.data[0];
-          Serial.println("- CAN Value 12V: " + String(value));
-          Value_12VBattery = value / 100;
+          //Serial.println("- CAN Value 12V: " + String(value));
+          Value_12VBattery = (float)value / 100;
           }
           break;
 
+        // Main Battery Temperature
         case 0x594: {
           SetCANStatusInidcator(TFT_BLUE);
           Serial.println("CAN: MainBatt Temp");
@@ -215,30 +222,33 @@ void CANCheckMessage(){
           Value_Battery_Temp2 = value2;
           }          
           break;
-          
+        
+        // Main Battery Voltage and Current
         case 0x580: {
           SetCANStatusInidcator(TFT_BLUE);
           Serial.println("CAN: MainBatt Voltage");
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
+
           // Current
-          Serial.println ("DEBUG: Data1: " + String(canMsg.data[1],  HEX) + " - Data0: " + String(canMsg.data[0], HEX));  
-          int value1 = (canMsg.data[1] << 8) | canMsg.data[0];
-          //Serial.println("Byte7: " + String(value1.readBytes[7], Binary_h));
-          Serial.println("- CAN Value Current: " + String(value1, HEX));
-          Value_Battery_Current = value1 / 10;
+          Serial.println ("DEBUG: Data1: 0x" + String(canMsg.data[1],  HEX) + String(canMsg.data[0], HEX) + " - " + String(canMsg.data[1], BIN) + String(canMsg.data[0], BIN));  
+          signed int value1 = (signed int)(canMsg.data[1] << 8 | canMsg.data[0]);   
+          Serial.println("- CAN Value Current: " + String(value1));
+          Value_Battery_Current = (float)value1 / 10;
 
           //Voltage
           int value2 = (canMsg.data[3] << 8) | canMsg.data[2];
           Serial.println("- CAN Value Voltage: " + String(value2));
-          Value_Battery_Volt = value2 * 0.01;
+          Value_Battery_Volt = (float)value2 / 100;
 
           // SoC
           unsigned int value3 = canMsg.data[5];
           //Serial.println("- CAN Value SoC: " + String(value3));
           Value_Battery_SoC = value3;
+          TransmitValuesChanged = true; // Values changed, so we need to send them
           }
-          
           break;
+
+        // Display
         case 0x713: {
           SetCANStatusInidcator(TFT_BLUE);
           Serial.println("CAN: Display");
@@ -270,7 +280,7 @@ void CANCheckMessage(){
           Serial.println("- CAN Value Remaining Distance: " + String(value));
           Value_Display_RemainingDistance = value;
 
-          // Break
+          // Break indicator
           if (canMsg.data[3] == 0x01) {
             Serial.println("- CAN Value Break: ON");
             Value_Display_Break = 1;
@@ -284,7 +294,7 @@ void CANCheckMessage(){
             Value_Display_Break = -1;
             }
           
-          //Ready
+          //Ready imndicator
           if (canMsg.data[2] == 0x01) {
             Serial.println("- CAN Value Ready: ON");
             Value_Display_Ready = 1;
@@ -300,6 +310,7 @@ void CANCheckMessage(){
           }
           break;
 
+        // Manual Break
         case 0x714: {
           SetCANStatusInidcator(TFT_BLUE);
           Serial.println("CAN: Break");
@@ -323,13 +334,10 @@ void CANCheckMessage(){
       }
     }
     else {
+      // unknow CAN Message
       SetCANStatusInidcator(TFT_BROWN);
     }
     
-  }
-  else {
-    Serial.println("No CAN Message available");
-    SetCANStatusInidcator(TFT_YELLOW);
   }
 }
 
@@ -403,14 +411,15 @@ void DisplayCreateUI(){
   //Resthöhe:  21 bis 141 = 120px
 
   // 45V Temp
-  tft.setTextSize(1);
-  tft.setTextColor(TFT_DARKCYAN);
-  tft.drawString("Temp 1:", 0, 25);
-  tft.drawString("Temp 2:", 0, 64);
-  tft.setTextSize(3);
-  tft.setTextColor(TFT_WHITE);
-  tft.drawString(String(Value_Battery_Temp1, 1) + " C", 20, 37);
-  tft.drawString(String(Value_Battery_Temp2, 1) + " C", 20, 76);
+  tft.fillRect(0, 36, 133, 24, TFT_BLACK);
+  tft.fillRect(0, 75, 133, 24, TFT_BLACK);
+  tft.drawString(String(Value_Battery_Temp1, 0), 30, 37);
+  tft.drawString(String(Value_Battery_Temp2, 0), 30, 76);
+  // Test Grad Kreis
+  tft.drawCircle(100, 37, 3, TFT_WHITE);
+  tft.drawCircle(100, 76, 3, TFT_WHITE);
+  tft.drawString("C", 110, 37);
+  tft.drawString("C", 110, 76);
 
   // 12V Spannung
   tft.fillRect(135, 23, 1, 77, TFT_DARKGREY);
@@ -462,8 +471,12 @@ void DisplayRefresh(){
   // 45V Temp
   tft.fillRect(0, 36, 133, 24, TFT_BLACK);
   tft.fillRect(0, 75, 133, 24, TFT_BLACK);
-  tft.drawString(String(Value_Battery_Temp1, 0) + " C", 20, 37);
-  tft.drawString(String(Value_Battery_Temp2, 0) + " C", 20, 76);
+  tft.drawString(String(Value_Battery_Temp1, 0), 30, 37);
+  tft.drawString(String(Value_Battery_Temp2, 0), 30, 76);
+  tft.drawCircle(100, 37, 3, TFT_WHITE);
+  tft.drawCircle(100, 76, 3, TFT_WHITE);
+  tft.drawString("C", 110, 37);
+  tft.drawString("C", 110, 76);
 
   // 12V Batt
   tft.fillRect(145, 36, 118, 24, TFT_BLACK);
@@ -512,6 +525,7 @@ void DebugFakeValues() {
 
 bool SendDataSimpleAPI() {
   Serial.println("Send Data via REST");
+  TransmitValuesChanged = false;
   SetTxStatusInidcator(TFT_BLUE);
 
   HTTPClient http;
@@ -537,3 +551,21 @@ bool SendDataSimpleAPI() {
   http.end();
 }
 
+void SerialPrintValues() {
+  Serial.println("Topolino Info Display - Values");
+  Serial.println(" - ECU ODO: " + String(Value_ECU_ODO));
+  Serial.println(" - ECU Speed: " + String(Value_ECU_Speed));
+  Serial.println(" - OBC Remaining Time: " + String(Value_OBC_RemainingTime));
+  Serial.println(" - 12V Battery: " + String(Value_12VBattery));
+  Serial.println(" - Battery Temp1: " + String(Value_Battery_Temp1));
+  Serial.println(" - Battery Temp2: " + String(Value_Battery_Temp2));
+  Serial.println(" - Battery Volt: " + String(Value_Battery_Volt));
+  Serial.println(" - Battery Current: " + String(Value_Battery_Current));
+  Serial.println(" - Battery SoC: " + String(Value_Battery_SoC));
+  Serial.println(" - Display Gear: " + String(Value_Display_Gear));
+  Serial.println(" - Display Remaining Distance: " + String(Value_Display_RemainingDistance));
+  Serial.println(" - Display Break: " + String(Value_Display_Break));
+  Serial.println(" - Display Ready: " + String(Value_Display_Ready));
+  Serial.println(" - Status Brake: " + String(Value_Status_Brake));
+  Serial.println("=============================");
+}
