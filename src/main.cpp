@@ -136,10 +136,17 @@ void loop() {
     WIFICheckConnection();
     SendDataSimpleAPI();
   }
+  else if (Value_ECU_Speed != 0) {
+    SetWIFIStatusInidcator(TFT_DARKGREY);
+    SetTxStatusInidcator(TFT_DARKGREY);
+  } 
 
   if (can.available() || CanInterrupt) {
     SetCANStatusInidcator(TFT_YELLOW);
     CANCheckMessage();
+  }
+  else {
+    SetCANStatusInidcator(TFT_DARKGREY);
   }
   
   delay(50); //loop delay
@@ -281,7 +288,7 @@ void CANCheckMessage(){
           // Remaining Distance
           unsigned int value2 = canMsg.data[0] >> 1;
           Serial.println("- CAN Value Remaining Distance1: " + String(canMsg.data[0], BIN));
-          Serial.println("- CAN Value Remaining Distance2: " + String(value2, BIN));
+          Serial.println("- CAN Value Remaining Distance2: " + String(value2, BIN)); //1011111 = 63
           Value_Display_RemainingDistance = value2;
 
           // Break indicator
@@ -300,7 +307,7 @@ void CANCheckMessage(){
           else {
             Value_Display_Ready = 0; // Bit 19 is not set
             }
-          Serial.println("- CAN Value Ready: " + String(canMsg.data[2], BIN));
+          Serial.println("- CAN Value Ready: " + String(canMsg.data[2], BIN)); //ready 0b101  not 0b11
           }
           break;
 
