@@ -203,12 +203,12 @@ void loop() {
 
     // Show Trip results
     tft.fillRect(0, 21, DISPLAY_WIDTH, 121, TFT_BLACK);
-    tft.setTextSize(3);
+    tft.setTextSize(2);
     tft.setTextColor(TFT_WHITE);
-    tft.drawString("Trip: " + String((Trip.endTime - Trip.startTime) / 1000 / 60) + " min. - " + String(Trip.endKM - Trip.startKM) + " km", 5, 21);
-    tft.drawString("km/h: " + String(Trip.maxSpeed) + " max - " + String((float)Trip.speedBuffer / Trip.records) + " avg.", 5, 61);
-    tft.drawString("Avg Energy: " + String((float)(Trip.energyBuffer / Trip.records) / 1000) + " kWh", 5, 101);
-    delay(15000);
+    tft.drawString("Trip: " + String((Trip.endTime - Trip.startTime) / 1000 / 60) + " min. - " + String(Trip.endKM - Trip.startKM) + " km", 5, 25);
+    tft.drawString("km/h: " + String(Trip.maxSpeed) + " max - " + String((float)Trip.speedBuffer / Trip.records) + " avg.", 5, 55);
+    tft.drawString("kWh: " + String((float)(Trip.energyBuffer / Trip.records) / 1000) + " avg.", 5, 85);
+    delay(30000);
 
     // Reset Trip data
     Trip.startTime = 0;
@@ -466,6 +466,7 @@ void WIFIDisconnect(){
 void DisplayCreateUI(){
   Serial.println("Disaply Create UI");
   // Titel
+  tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_DARKCYAN);
   tft.setTextSize(2);
   tft.drawString("Topolino Info Display " + String(VERSION), 0, 0);
