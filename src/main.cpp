@@ -5,7 +5,7 @@
 #include <ACAN2515.h>
 #include <spi.h>
 
-#define VERSION 0.05
+#define VERSION 0.06
 #define DISPLAY_POWER_PIN 15
 #define DISPLAY_BACKLIGHT 38
 #define DISPLAY_HIGHT 170
@@ -25,18 +25,18 @@ ACAN2515 can((int)CAN_CS, SPI, (int)CAN_INTERRUPT);
 
 //Loops
 unsigned long DisplayRefreshLastRun = 0;
-const long DisplayRefreshInterval = 0.25 * 1000; 
+const unsigned int DisplayRefreshInterval = 0.25 * 1000; 
 unsigned long SendDataLastRun = 0;
-const long SendDataInterval = 30 * 1000; 
-long SerialOutputLastRun = 0;
+const unsigned int SendDataInterval = 30 * 1000; 
+unsigned long SerialOutputLastRun = 0;
 
 // CAN values
 int Value_ECU_ODO = -1;
 int Value_ECU_Speed = -1;
 int Value_OBC_RemainingMinutes = -1;
 float Value_12VBattery = -1;
-float Value_Battery_Temp1 = -1;
-float Value_Battery_Temp2 = -1;
+int Value_Battery_Temp1 = -1;
+int Value_Battery_Temp2 = -1;
 float Value_Battery_Volt = -1;
 float Value_Battery_Current = -1;
 int Value_Battery_SoC = -1;
@@ -48,7 +48,7 @@ int Value_Status_Handbrake = -1;
 // globals
 bool CanInterrupt = false;
 bool TransmitValuesChanged = true;
-int CanMessagesProcessed = 0;
+unsigned long CanMessagesProcessed = 0;
 
 // put function declarations here:
 void CANCheckMessage();
@@ -147,13 +147,13 @@ void loop() {
     //DebugFakeValues();
   }
 
-  if (currentMillis - SendDataLastRun >= SendDataInterval && TransmitValuesChanged && Value_ECU_Speed == 0) // Send only when speed is 0 and values has changed
+  if (currentMillis - SendDataLastRun >= SendDataInterval && TransmitValuesChanged && Value_ECU_Speed <= 1) // Send only when speed is 0 and values has changed
   {
     SendDataLastRun = currentMillis;
     WIFICheckConnection();
     SendDataSimpleAPI();
   }
-  else if (Value_ECU_Speed != 0) {
+  else if (Value_ECU_Speed > 1) { // deactivate tranismitting when driving
     SetWIFIStatusInidcator(TFT_DARKGREY);
     SetTxStatusInidcator(TFT_DARKGREY);
   } 
@@ -162,12 +162,9 @@ void loop() {
     SetCANStatusInidcator(TFT_YELLOW);
     CANCheckMessage();
   }
-  else {
-    SetCANStatusInidcator(TFT_DARKGREY);
-  }
   
   //Serial Output
-  if (currentMillis - SerialOutputLastRun >= 1000) {
+  if (currentMillis - SerialOutputLastRun >= 5000) {
     SerialOutputLastRun = currentMillis;
  // Print every second
     SerialPrintValues();
@@ -282,7 +279,6 @@ void CANCheckMessage(){
           break;
 
         // Display
-        // ---- To be checked ----
         case 0x713: {
           SetCANStatusInidcator(TFT_BLUE);
           if (!canMsg.len == 7) {Serial.println("CAN: Wrong Lenght"); break;}
@@ -311,16 +307,15 @@ void CANCheckMessage(){
 
           // Remaining Distance
           unsigned int value2 = canMsg.data[0] & 0x3F; // Mask to get the lower 6 bits
-          //Serial.println("- CAN Value Remaining Distance1: " + String(canMsg.data[0], BIN));
           //Serial.println("- CAN Value Remaining Distance2: " + String(value2));
           Value_Display_RemainingDistance = value2;
           
           //Ready indicator
-          switch (canMsg.data[2] & 0b00000111) { // Check the last 3 bits
+          switch ((canMsg.data[2] & 0b00000111)) { // Check the last 3 bits
             case 0b101:
-              Value_display_Ready = 1; // Ready
+              Value_Display_Ready = 1; // Ready
               break;
-            case 0b011
+            case 0b11:
               Value_Display_Ready = 0; // Not ready
               break;
             default:
@@ -430,7 +425,7 @@ void DisplayCreateUI(){
   
   //Resthöhe:  21 bis 141 = 120px
 
-  // 45V Temp
+  // 51V Temp
   tft.setTextSize(1);
   tft.setTextColor(TFT_DARKCYAN);
   tft.drawString("Temp 1:", 10, 25);
@@ -453,7 +448,7 @@ void DisplayCreateUI(){
   tft.setTextColor(TFT_WHITE);
   tft.drawString(String(Value_12VBattery, 1) + "V", 150, 37);
   
-  // 45V SoC
+  // 51V SoC
   tft.fillRect(135, 61, 130, 1, TFT_DARKGREY);
   tft.setTextSize(1);
   tft.setTextColor(TFT_DARKCYAN);
@@ -489,12 +484,20 @@ void DisplayRefresh(){
   if (tft.readPixel(82, 157) == 58623) {SetALIVEStatusInidcator(TFT_GREEN);} else {SetALIVEStatusInidcator(TFT_WHITE);}
 
   tft.setTextSize(3);
-  tft.setTextColor(TFT_WHITE);
 
-  // 45V Temp
+  // 51V Temp
   tft.fillRect(0, 36, 133, 24, TFT_BLACK);
   tft.fillRect(0, 75, 133, 24, TFT_BLACK);
+  if (Value_Battery_Temp1 > 45) { tft.setTextColor(TFT_RED); }
+  else if (Value_Battery_Temp1 < 15) { tft.setTextColor(TFT_YELLOW); }
+  else if (Value_Battery_Temp1 < 5) { tft.setTextColor(TFT_BLUE); }
+  else { tft.setTextColor(TFT_WHITE); }
   tft.drawString(String(Value_Battery_Temp1, 0), 30, 37);
+
+  if (Value_Battery_Temp2 > 45) { tft.setTextColor(TFT_RED); }
+  else if (Value_Battery_Temp2 < 15) { tft.setTextColor(TFT_YELLOW); }
+  else if (Value_Battery_Temp2 < 5) { tft.setTextColor(TFT_BLUE); }
+  else { tft.setTextColor(TFT_WHITE); }
   tft.drawString(String(Value_Battery_Temp2, 0), 30, 76);
   int positionX = 70;
   if (Value_Battery_Temp1 <= -10 || Value_Battery_Temp2 <= -10) {positionX = 100;}
@@ -505,15 +508,26 @@ void DisplayRefresh(){
 
   // 12V Batt
   tft.fillRect(145, 36, 118, 24, TFT_BLACK);
+  if (Value_12VBattery < 11.5) { tft.setTextColor(TFT_RED); }
+  else if (Value_12VBattery < 12.0) { tft.setTextColor(TFT_YELLOW); }
+  else if (Value_12VBattery < 12.5) { tft.setTextColor(TFT_BLUE); }
+  else { tft.setTextColor(TFT_WHITE); }
   tft.drawString(String(Value_12VBattery, 1) + "V", 150, 37);
 
   // SoC
   tft.fillRect(145, 75, 118, 24, TFT_BLACK);
+  if (Value_Battery_SoC < 15) { tft.setTextColor(TFT_RED); }
+  else if (Value_Battery_SoC < 30) { tft.setTextColor(TFT_YELLOW); }
+  else { tft.setTextColor(TFT_WHITE); }
   tft.drawString(String(Value_Battery_SoC) + "%", 160, 76);
   
   // Gear
   tft.fillRect(275, 41, 44, 58, TFT_BLACK);
   tft.setTextSize(7);
+  if (Value_Display_Gear == "R") { tft.setTextColor(TFT_RED); }
+  else if (Value_Display_Gear == "N") { tft.setTextColor(TFT_YELLOW); }
+  else if (Value_Display_Gear == "D") { tft.setTextColor(TFT_GREEN); }
+  else { tft.setTextColor(TFT_WHITE); }
   tft.drawString(Value_Display_Gear, 275, 42);
 
   // Stromverbrauch
@@ -531,10 +545,14 @@ void DisplayRefresh(){
     tft.fillRectHGradient(112, 106, gradientLenght, 30, TFT_YELLOW, TFT_RED);
   }
 
-  tft.setTextColor(TFT_WHITE);
   tft.setTextSize(3);
+  if (Value_Battery_Current > 0) { tft.setTextColor(TFT_GREEN); }
+  else if (Value_Battery_Current < -75) { tft.setTextColor(TFT_RED); }
+  else { tft.setTextColor(TFT_WHITE); }
   tft.drawString(String(Value_Battery_Current, 1) + " A", 130, 110);
   tft.setTextSize(2);
+  if (Value_Battery_Volt < 51.2 || Value_Battery_Volt > 58) { tft.setTextColor(TFT_RED); }
+  else { tft.setTextColor(TFT_WHITE); }
   tft.drawString(String(Value_Battery_Volt, 1) + "V", 20, 115); 
 }
 
@@ -579,18 +597,18 @@ bool SendDataSimpleAPI() {
 void SerialPrintValues() {
   Serial.println("Topolino Info Display - Values");
   Serial.println("Can Messages Processed: " + String(CanMessagesProcessed));
-  Serial.println(" - ECU ODO: " + String(Value_ECU_ODO));
-  Serial.println(" - ECU Speed: " + String(Value_ECU_Speed));
+  Serial.println(" - ECU ODO: " + String(Value_ECU_ODO) + " km");
+  Serial.println(" - ECU Speed: " + String(Value_ECU_Speed) + " km/h");
   Serial.println(" - OBC Remaining Time: " + String(Value_OBC_RemainingMinutes) + " minutes");
-  Serial.println(" - 12V Battery: " + String(Value_12VBattery));
-  Serial.println(" - Battery Temp1: " + String(Value_Battery_Temp1));
-  Serial.println(" - Battery Temp2: " + String(Value_Battery_Temp2));
-  Serial.println(" - Battery Volt: " + String(Value_Battery_Volt));
-  Serial.println(" - Battery Current: " + String(Value_Battery_Current));
-  Serial.println(" - Battery SoC: " + String(Value_Battery_SoC));
-  Serial.println(" - Display Gear: " + String(Value_Display_Gear));
-  Serial.println(" - Display Remaining Distance: " + String(Value_Display_RemainingDistance));
-  Serial.println(" - Display Ready: " + String(Value_Display_Ready));
-  Serial.println(" - Status Handreake: " + String(Value_Status_Handbrake));
+  Serial.println(" - 12V Battery: " + String(Value_12VBattery) + " V");
+  Serial.println(" - Battery Temp1: " + String(Value_Battery_Temp1) + " °C");
+  Serial.println(" - Battery Temp2: " + String(Value_Battery_Temp2) + " °C");
+  Serial.println(" - Battery Volt: " + String(Value_Battery_Volt) + " V");
+  Serial.println(" - Battery Current: " + String(Value_Battery_Current) + " A");
+  Serial.println(" - Battery SoC: " + String(Value_Battery_SoC) + " %");
+  Serial.println(" - Display Gear: " + String(Value_Display_Gear) + " (0=R, 1=N, 2=D, 3=-)");
+  Serial.println(" - Display Remaining Distance: " + String(Value_Display_RemainingDistance) + " km");
+  Serial.println(" - Display Ready: " + String(Value_Display_Ready) + " (1=Ready, 0=Not Ready, -1=Unknown)");
+  Serial.println(" - Status Handreake: " + String(Value_Status_Handbrake) + " (1=On, 0=Off, -1=Unknown)");
   Serial.println("=============================");
 }
