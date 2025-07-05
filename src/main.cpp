@@ -612,7 +612,6 @@ void DisplayRefresh(){
 
   tft.setTextSize(3);
   if (Value_Battery_Current > 0) { tft.setTextColor(TFT_GREEN); }
-  else if (Value_Battery_Current < -75) { tft.setTextColor(TFT_RED); }
   else { tft.setTextColor(TFT_WHITE); }
   tft.drawString(String(Value_Battery_Current, 1) + " A", 130, 110);
   tft.setTextSize(2);
