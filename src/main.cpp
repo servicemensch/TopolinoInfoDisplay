@@ -503,6 +503,7 @@ void DisplayRefresh(){
   if (Value_Battery_Temp1 <= -10 || Value_Battery_Temp2 <= -10) {positionX = 100;}
   tft.drawCircle(positionX, 37, 3, TFT_WHITE);
   tft.drawCircle(positionX, 76, 3, TFT_WHITE);
+  tft.setTextColor(TFT_WHITE);
   tft.drawString("C", positionX + 10, 37);
   tft.drawString("C", positionX + 10, 76);
 
