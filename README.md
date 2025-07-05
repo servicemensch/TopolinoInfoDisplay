@@ -1,11 +1,9 @@
 # Topolino Info Display
 
 ## Hardware:
-[LilyGo T-Display S3](https://lilygo.cc/products/t-display-s3?variant=42284559827125)
-- ESP32
-- 1,9" 8Bit LCD Screen
-
-1x [MCP 2515 Can Bus module](https://www.az-delivery.de/products/mcp2515-can-bus-modul-1)
+- [LilyGo T-Display S3](https://lilygo.cc/products/t-display-s3?variant=42284559827125) (ESP32 + 1,9" 8Bit LCD Screen)
+- [MCP 2515 Can Bus module](https://www.az-delivery.de/products/mcp2515-can-bus-modul-1)
+- 3D printed OBD2 plug
 
 ### Wireing:
 ![fizing diagram](info/Wireing.png)

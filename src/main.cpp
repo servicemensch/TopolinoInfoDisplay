@@ -5,7 +5,7 @@
 #include <ACAN2515.h>
 #include <spi.h>
 
-#define VERSION 0.06
+#define VERSION 0.08
 #define DISPLAY_POWER_PIN 15
 #define DISPLAY_BACKLIGHT 38
 #define DISPLAY_HIGHT 170
@@ -18,6 +18,17 @@
 #define CAN_8MHz 8UL * 1000UL * 1000UL
 #define CAN_500Kbs 500UL * 1000UL
 
+struct trip {
+  unsigned long startTime = 0;
+  unsigned long endTime;
+  float startKM = 0;
+  float endKM;
+  float maxSpeed = 0; // in km/h
+  float speedBuffer; // for averaging speed
+  float energyBuffer;
+  unsigned long records = 0;
+};
+
 TFT_eSPI tft = TFT_eSPI();
 ACAN2515 can((int)CAN_CS, SPI, (int)CAN_INTERRUPT);
 
@@ -29,6 +40,8 @@ const unsigned int DisplayRefreshInterval = 0.25 * 1000;
 unsigned long SendDataLastRun = 0;
 const unsigned int SendDataInterval = 30 * 1000; 
 unsigned long SerialOutputLastRun = 0;
+const unsigned int TripRecordInterval = 1 * 1000;
+unsigned long TripRecordingLastRun = 0;
 
 // CAN values
 int Value_ECU_ODO = -1;
@@ -38,17 +51,20 @@ float Value_12VBattery = -1;
 int Value_Battery_Temp1 = -1;
 int Value_Battery_Temp2 = -1;
 float Value_Battery_Volt = -1;
-float Value_Battery_Current = -1;
 int Value_Battery_SoC = -1;
 const char* Value_Display_Gear = "?";
 int Value_Display_RemainingDistance = -1;
 int Value_Display_Ready = -1;
 int Value_Status_Handbrake = -1;
+float Value_Battery_Current = -1;
+float Value_Battery_Current_Buffer;
+
 
 // globals
 bool CanInterrupt = false;
-bool TransmitValuesChanged = true;
 unsigned long CanMessagesProcessed = 0;
+trip Trip; // Trip data structure
+bool TripActive = false;
 
 // put function declarations here:
 void CANCheckMessage();
@@ -61,7 +77,8 @@ void DisplayRefresh();
 void DebugFakeValues();
 bool SendDataSimpleAPI();
 void SerialPrintValues();
-
+float average(float newvalue, float &buffer, float factor);
+void TripRecording();
 void SetALIVEStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(82, 157, 8, color); }
 void SetCANStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(155, 157, 8, color); }
 void SetWIFIStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(245, 157, 8, color); }
@@ -147,7 +164,7 @@ void loop() {
     //DebugFakeValues();
   }
 
-  if (currentMillis - SendDataLastRun >= SendDataInterval && TransmitValuesChanged && Value_ECU_Speed <= 1) // Send only when speed is 0 and values has changed
+  if (currentMillis - SendDataLastRun >= SendDataInterval && Value_ECU_Speed <= 1) // Send only when speed is 0 and values has changed
   {
     SendDataLastRun = currentMillis;
     WIFICheckConnection();
@@ -162,11 +179,54 @@ void loop() {
     SetCANStatusInidcator(TFT_YELLOW);
     CANCheckMessage();
   }
-  
+
+  //Check for new trip recording
+  if (Value_Display_Ready == 1 && Value_ECU_Speed > 0 && !TripActive) {
+    TripActive = true;
+    Serial.println("Trip started at " + String(Trip.startTime) + " with ODO: " + String(Trip.startKM));
+  } 
+
+  if (currentMillis - TripRecordingLastRun >= TripRecordInterval && TripActive) {
+    TripRecordingLastRun = currentMillis;
+    TripRecording();
+  }
+
+  // check if trip ends
+  if (Value_Display_Ready == 0 && Value_ECU_Speed <= 0 && TripActive) {
+    TripActive = false;
+    
+    Serial.println("Trip Duration: " + String((Trip.endTime - Trip.startTime) / 1000 / 60) + " minutes");
+    Serial.println("Trip Distance: " + String(Trip.endKM - Trip.startKM) + " km");
+    Serial.println("Trip Max Speed: " + String(Trip.maxSpeed) + " km/h");
+    Serial.println("Trip average Speed: " + String((float)Trip.speedBuffer / Trip.records) + " km/h");
+    Serial.println("Trip average Energy: " + String((float)(Trip.energyBuffer / Trip.records) / 1000) + " kWh");
+
+    // Show Trip results
+    tft.fillRect(0, 21, DISPLAY_WIDTH, 121, TFT_BLACK);
+    tft.setTextSize(3);
+    tft.setTextColor(TFT_WHITE);
+    tft.drawString("Trip: " + String((Trip.endTime - Trip.startTime) / 1000 / 60) + " min. - " + String(Trip.endKM - Trip.startKM) + " km", 5, 21);
+    tft.drawString("km/h: " + String(Trip.maxSpeed) + " max - " + String((float)Trip.speedBuffer / Trip.records) + " avg.", 5, 61);
+    tft.drawString("Avg Energy: " + String((float)(Trip.energyBuffer / Trip.records) / 1000) + " kWh", 5, 101);
+    delay(15000);
+
+    // Reset Trip data
+    Trip.startTime = 0;
+    Trip.endTime = 0;
+    Trip.startKM = 0;
+    Trip.endKM = 0;
+    Trip.maxSpeed = 0;
+    Trip.speedBuffer = 0;
+    Trip.energyBuffer = 0; 
+    Trip.records = 0;
+
+    DisplayCreateUI();
+    DisplayRefresh();
+  }
+
   //Serial Output
   if (currentMillis - SerialOutputLastRun >= 5000) {
     SerialOutputLastRun = currentMillis;
- // Print every second
     SerialPrintValues();
   }
 
@@ -261,7 +321,7 @@ void CANCheckMessage(){
             value1 = value1 - 65536; // Convert to signed int
             }
           //Serial.println("- CAN Value Current: " + String(value1));
-          Value_Battery_Current = (float)value1 / 10;
+          Value_Battery_Current = average((float)value1 / 10, Value_Battery_Current_Buffer, 3); // Average over 3 values 
 
           //Voltage
           int value2 = (canMsg.data[3] << 8) | canMsg.data[2];
@@ -274,7 +334,6 @@ void CANCheckMessage(){
           unsigned int value3 = canMsg.data[5];
           //Serial.println("- CAN Value SoC: " + String(value3));
           Value_Battery_SoC = value3;
-          TransmitValuesChanged = true; // Values changed, so we need to send them
           }
           break;
 
@@ -428,12 +487,12 @@ void DisplayCreateUI(){
   // 51V Temp
   tft.setTextSize(1);
   tft.setTextColor(TFT_DARKCYAN);
-  tft.drawString("Temp 1:", 10, 25);
-  tft.drawString("Temp 2:", 10, 64);
+  tft.drawString("Temp 1:", 5, 25);
+  tft.drawString("Temp 2:", 5, 64);
   tft.setTextSize(3);
   tft.setTextColor(TFT_WHITE);
-  tft.drawString(String(Value_Battery_Temp1, 0), 30, 37);
-  tft.drawString(String(Value_Battery_Temp2, 0), 30, 76);
+  tft.drawString(String(Value_Battery_Temp1), 30, 37);
+  tft.drawString(String(Value_Battery_Temp2), 30, 76);
   tft.drawCircle(70, 37, 3, TFT_WHITE);
   tft.drawCircle(70, 76, 3, TFT_WHITE);
   tft.drawString("C", 80, 37);
@@ -481,24 +540,28 @@ void DisplayCreateUI(){
 void DisplayRefresh(){
   //Serial.println("Display Refresh"); 
   //Statusleiste
-  if (tft.readPixel(82, 157) == 58623) {SetALIVEStatusInidcator(TFT_GREEN);} else {SetALIVEStatusInidcator(TFT_WHITE);}
+  if (tft.readPixel(82, 157) == 58623 && TripActive)
+    { SetALIVEStatusInidcator(TFT_BLUE); }
+  else if (tft.readPixel(82, 157) == 58623 ) //weis
+    {SetALIVEStatusInidcator(TFT_GREEN);}
+  else {SetALIVEStatusInidcator(TFT_WHITE);}
 
   tft.setTextSize(3);
 
   // 51V Temp
+  tft.setTextColor(TFT_WHITE);
   tft.fillRect(0, 36, 133, 24, TFT_BLACK);
   tft.fillRect(0, 75, 133, 24, TFT_BLACK);
   if (Value_Battery_Temp1 > 45) { tft.setTextColor(TFT_RED); }
-  else if (Value_Battery_Temp1 < 15) { tft.setTextColor(TFT_YELLOW); }
   else if (Value_Battery_Temp1 < 5) { tft.setTextColor(TFT_BLUE); }
+  else if (Value_Battery_Temp1 < 15) { tft.setTextColor(TFT_YELLOW); }
   else { tft.setTextColor(TFT_WHITE); }
-  tft.drawString(String(Value_Battery_Temp1, 0), 30, 37);
-
+  tft.drawString(String(Value_Battery_Temp1), 30, 37);
   if (Value_Battery_Temp2 > 45) { tft.setTextColor(TFT_RED); }
-  else if (Value_Battery_Temp2 < 15) { tft.setTextColor(TFT_YELLOW); }
   else if (Value_Battery_Temp2 < 5) { tft.setTextColor(TFT_BLUE); }
+  else if (Value_Battery_Temp2 < 15) { tft.setTextColor(TFT_YELLOW); }
   else { tft.setTextColor(TFT_WHITE); }
-  tft.drawString(String(Value_Battery_Temp2, 0), 30, 76);
+  tft.drawString(String(Value_Battery_Temp2), 30, 76);
   int positionX = 70;
   if (Value_Battery_Temp1 <= -10 || Value_Battery_Temp2 <= -10) {positionX = 100;}
   tft.drawCircle(positionX, 37, 3, TFT_WHITE);
@@ -565,20 +628,49 @@ void DebugFakeValues() {
   Value_Battery_Temp2 = random(-90, 450) / 10;
   Value_Battery_Volt = random(210, 560) / 10;
   Value_Battery_Current = random(-2050, 1050) / 10;
+  Value_ECU_ODO = random(0, 1000000) / 10; // km
+  Value_ECU_Speed = random(0, 50); // km/h
+  Value_OBC_RemainingMinutes = random(0, 250); // minutes
+  Value_Display_RemainingDistance = random(0, 80); // km
 }
 
 bool SendDataSimpleAPI() {
   Serial.println("Send Data via REST");
-  TransmitValuesChanged = false;
   SetTxStatusInidcator(TFT_BLUE);
 
   HTTPClient http;
+  /* SimpleAPI ste single value
   String URL = "http://10.0.1.51:8087/set/0_userdata.0.topolino.SoC?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password + "&ack=true&value=" + String(Value_Battery_SoC);
   Serial.print("URL: ");
-  Serial.println(URL);
-
+  Seial.println(URL);
   http.begin(URL);
-  http.setConnectTimeout(3 * 1000); //3 Sekunden
+  http.setTimeout(3 * 1000); // 3 seconds timeout
+  http.setUserAgent("TopolinoInfoDisplay/1.0");
+  int httpResponseCode = http.GET();
+  */
+
+  // SimpleAPI set values bulk
+  String URL = "http://10.0.1.51:8087/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
+
+  String DataURLEncoded = "&0_userdata.0.topolino.SoC=" + String(Value_Battery_SoC) + 
+                    "&0_userdata.0.topolino.12VBatt=" + String(Value_12VBattery) +
+                    "&0_userdata.0.topolino.BattA=" + String(Value_Battery_Current) + 
+                    "&0_userdata.0.topolino.BattTemp1=" + String(Value_Battery_Temp1) + 
+                    "&0_userdata.0.topolino.BattTemp2=" + String(Value_Battery_Temp2) +
+                    "&0_userdata.0.topolino.BattV=" + String(Value_Battery_Volt) + 
+                    "&0_userdata.0.topolino.Handbrake=" + String(Value_Status_Handbrake) + 
+                    "&0_userdata.0.topolino.ODO=" + String(Value_ECU_ODO) + 
+                    "&0_userdata.0.topolino.OnBoardChargerRemaining=" + String(Value_OBC_RemainingMinutes) + 
+                    "&0_userdata.0.topolino.Ready=" + String(Value_Display_Ready) + 
+                    "&0_userdata.0.topolino.RemainingKM=" + String(Value_Display_RemainingDistance) + 
+                    "&0_userdata.0.topolino.gear=" + String(Value_Display_Gear) + 
+                    "&0_userdata.0.topolino.speed=" + String(Value_ECU_Speed) +
+                    "ack=true";
+  Serial.print("Data: ");
+  Serial.println(URL + DataURLEncoded); 
+  http.begin(URL + DataURLEncoded);
+  http.setTimeout(3 * 1000); // 3 seconds timeout
+  http.setUserAgent("TopolinoInfoDisplay/1.0");
   int httpResponseCode = http.GET();
 
   if (httpResponseCode == 200) {
@@ -607,9 +699,31 @@ void SerialPrintValues() {
   Serial.println(" - Battery Volt: " + String(Value_Battery_Volt) + " V");
   Serial.println(" - Battery Current: " + String(Value_Battery_Current) + " A");
   Serial.println(" - Battery SoC: " + String(Value_Battery_SoC) + " %");
-  Serial.println(" - Display Gear: " + String(Value_Display_Gear) + " (0=R, 1=N, 2=D, 3=-)");
+  Serial.println(" - Display Gear: " + String(Value_Display_Gear) );
   Serial.println(" - Display Remaining Distance: " + String(Value_Display_RemainingDistance) + " km");
   Serial.println(" - Display Ready: " + String(Value_Display_Ready) + " (1=Ready, 0=Not Ready, -1=Unknown)");
   Serial.println(" - Status Handreake: " + String(Value_Status_Handbrake) + " (1=On, 0=Off, -1=Unknown)");
   Serial.println("=============================");
+}
+
+float average( float newvalue, float &buffer, float factor)
+{
+  float avg ;
+  buffer = buffer - (buffer / factor);
+  buffer = buffer + newvalue;
+  avg = buffer / factor;
+  return avg;
+}
+
+void TripRecording() {
+  if ( Trip.maxSpeed < Value_ECU_Speed) { Trip.maxSpeed = Value_ECU_Speed; }
+  Trip.speedBuffer += Value_ECU_Speed;
+  Trip.records++;
+  Trip.energyBuffer += Value_Battery_Current * Value_Battery_Volt; // in Wh
+  if (Trip.startTime == 0) {
+    Trip.startTime = millis();
+    Trip.startKM = Value_ECU_ODO;
+  }
+  Trip.endTime = millis();
+  Trip.endKM = Value_ECU_ODO;  
 }
