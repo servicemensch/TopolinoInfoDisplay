@@ -5,7 +5,7 @@
 #include <ACAN2515.h>
 #include <spi.h>
 
-#define VERSION 0.02
+#define VERSION 0.05
 #define DISPLAY_POWER_PIN 15
 #define DISPLAY_BACKLIGHT 38
 #define DISPLAY_HIGHT 170
@@ -25,9 +25,9 @@ ACAN2515 can((int)CAN_CS, SPI, (int)CAN_INTERRUPT);
 
 //Loops
 unsigned long DisplayRefreshLastRun = 0;
-const long DisplayRefreshInterval = 0.5 * 1000; 
+const long DisplayRefreshInterval = 0.25 * 1000; 
 unsigned long SendDataLastRun = 0;
-const long SendDataInterval = 10 * 1000; 
+const long SendDataInterval = 30 * 1000; 
 
 // CAN values
 int Value_ECU_ODO = -1;
@@ -48,6 +48,7 @@ int Value_Status_Handbrake = -1;
 // globals
 bool CanInterrupt = false;
 bool TransmitValuesChanged = true;
+int CanMessagesProcessed = 0;
 
 // put function declarations here:
 void CANCheckMessage();
@@ -163,8 +164,10 @@ void CANCheckMessage(){
     //Serial.println("CAN Message recived - Data: " + String(canMsg.data[0], HEX) + " " + String(canMsg.data[1], HEX) + " " + String(canMsg.data[2], HEX) + " " + String(canMsg.data[3], HEX) + " " + String(canMsg.data[4], HEX) + " " + String(canMsg.data[5], HEX) + " " + String(canMsg.data[6], HEX) + " " + String(canMsg.data[7], HEX) + " " + String(canMsg.data[8], HEX));
 
     if (!canMsg.rtr) {
+      CanMessagesProcessed++;
       switch (canMsg.id) {
         // Electronic control Unit (ECU)
+        // ---- To be checked ----
         case 0x581: {
           SetCANStatusInidcator(TFT_BLUE);
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
@@ -174,13 +177,14 @@ void CANCheckMessage(){
           Value_ECU_ODO = (float)value1 / 10;
 
           // Speed 
-          unsigned int value = canMsg.data[8] << 8 | canMsg.data[7];
+          unsigned int value = canMsg.data[7];
           //Serial.println("- CAN Value Speed: " + String(value));          
-          Value_12VBattery = value;
+          Value_ECU_Speed= value;
           }
           break;
 
         // Onboard Charger
+        // ---- To be checked ----
         case 0x582: {
           SetCANStatusInidcator(TFT_BLUE);
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
@@ -229,15 +233,16 @@ void CANCheckMessage(){
           if (value1 > 32767) {
             value1 = value1 - 65536; // Convert to signed int
             }
-          //Serial.println("Byte7: " + String(value1.readBytes[7], Binary_h));
           //Serial.println("- CAN Value Current: " + String(value1));
           Value_Battery_Current = (float)value1 / 10;
 
           //Voltage
           int value2 = (canMsg.data[3] << 8) | canMsg.data[2];
           //Serial.println("- CAN Value Voltage: " + String(value2));
-          Value_Battery_Volt = (float)value2 / 100;
-
+          if (value2 > 4200 && value2 < 6500) { // Check is value is in valid range
+            Value_Battery_Volt = (float)value2 / 100;
+          }
+        
           // SoC
           unsigned int value3 = canMsg.data[5];
           //Serial.println("- CAN Value SoC: " + String(value3));
@@ -247,61 +252,56 @@ void CANCheckMessage(){
           break;
 
         // Display
+        // ---- To be checked ----
         case 0x713: {
           SetCANStatusInidcator(TFT_BLUE);
           if (!canMsg.len == 7) {Serial.println("CAN: Wrong Lenght"); break;}
 
+          unsigned int value1 = canMsg.data[0] & 0b11; // Get last 2 bits
           // Gear
-          if (canMsg.data[0] == 0x00) {
-            Value_Display_Gear = "P";
+          switch (value1) {
+            case 0b00: // 0
+              Value_Display_Gear = "R";
+              break;
+            case 0b01: // 1
+              Value_Display_Gear = "N";
+              break;
+            case 0b10: // 2
+              Value_Display_Gear = "D";
+              break; 
+            case 0b11: // 3
+              Value_Display_Gear = "-";
+              break; 
+            default:
+              Value_Display_Gear = "?";
+              break;
             }
-          else if (canMsg.data[0] == 0x01) {
-            Value_Display_Gear = "R";
-            }
-          else if (canMsg.data[0] == 0x02) {
-            Value_Display_Gear = "N";
-            }
-          else if (canMsg.data[0] == 0x03) {
-            Value_Display_Gear = "D";
-            }
-          else if (canMsg.data[0] == 0x04) {
-            Value_Display_Gear = "B";
-            }
-          else {
-            Value_Display_Gear = "?";
-            }
-          Serial.println("- CAN Value Gear: " + String(canMsg.data[0], HEX));
+          //Serial.println("- CAN Value Gear: " + String(canMsg.data[0], HEX));
 
           // Remaining Distance
-          unsigned int value = canMsg.data[0] << 7;
-          //Serial.println("- CAN Value Remaining Distance: " + String(value));
-          Value_Display_RemainingDistance = value;
+          unsigned int value2 = canMsg.data[0] << 7;
+          //Serial.println("- CAN Value Remaining Distance: " + String(value2));
+          Value_Display_RemainingDistance = value2;
 
           // Break indicator
-          if (canMsg.data[3] == 0x01) {
-            Value_Display_Break = 1;
-            }
-          else if (canMsg.data[3] == 0x00) {
-            Value_Display_Break = 0;
+          unsigned int value3 = (canMsg.data[3] & 0b1100) >> 2; // Get bits 2 and 3
+          if ((canMsg.data[3] & (1 << 6)) != 0) {
+            Value_Display_Break = 1; // Bit 30 is set
             }
           else {
-            Value_Display_Break = -1;
+            Value_Display_Break = 0; // Bit 30 is not set
             }
           //Serial.println("- CAN Value Break: " + String(canMsg.data[3], HEX));
           
-          //Ready imndicator
-          if (canMsg.data[2] == 0x01) {
-            Value_Display_Ready = 1;
-            }
-          else if (canMsg.data[2] == 0x00) {
-            Value_Display_Ready = 0;
+          //Ready indicator
+          if ((canMsg.data[2] & (1 << 3)) != 0) {
+            Value_Display_Ready = 1; // Bit 19 is set
             }
           else {
-            Value_Display_Ready = -1;
+            Value_Display_Ready = 0; // Bit 19 is not set
             }
-          }
           //Serial.println("- CAN Value Ready: " + String(canMsg.data[2], HEX));
-
+          }
           break;
 
         // Handbreak
@@ -324,8 +324,8 @@ void CANCheckMessage(){
           //Serial.println("- CAN Value Brake: " + String(canMsg.data[0], HEX));
 
           break;
+        }
       }
-    }
     else {
       // unknow CAN Message
       SetCANStatusInidcator(TFT_BROWN);
@@ -404,15 +404,18 @@ void DisplayCreateUI(){
   //Resthöhe:  21 bis 141 = 120px
 
   // 45V Temp
-  tft.fillRect(0, 36, 133, 24, TFT_BLACK);
-  tft.fillRect(0, 75, 133, 24, TFT_BLACK);
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_DARKCYAN);
+  tft.drawString("Temp 1:", 10, 25);
+  tft.drawString("Temp 2:", 10, 64);
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_WHITE);
   tft.drawString(String(Value_Battery_Temp1, 0), 30, 37);
   tft.drawString(String(Value_Battery_Temp2, 0), 30, 76);
-  // Test Grad Kreis
-  tft.drawCircle(100, 37, 3, TFT_WHITE);
-  tft.drawCircle(100, 76, 3, TFT_WHITE);
-  tft.drawString("C", 110, 37);
-  tft.drawString("C", 110, 76);
+  tft.drawCircle(70, 37, 3, TFT_WHITE);
+  tft.drawCircle(70, 76, 3, TFT_WHITE);
+  tft.drawString("C", 80, 37);
+  tft.drawString("C", 80, 76);
 
   // 12V Spannung
   tft.fillRect(135, 23, 1, 77, TFT_DARKGREY);
@@ -466,10 +469,12 @@ void DisplayRefresh(){
   tft.fillRect(0, 75, 133, 24, TFT_BLACK);
   tft.drawString(String(Value_Battery_Temp1, 0), 30, 37);
   tft.drawString(String(Value_Battery_Temp2, 0), 30, 76);
-  tft.drawCircle(100, 37, 3, TFT_WHITE);
-  tft.drawCircle(100, 76, 3, TFT_WHITE);
-  tft.drawString("C", 110, 37);
-  tft.drawString("C", 110, 76);
+  int positionX = 70;
+  if (Value_Battery_Temp1 <= -10 || Value_Battery_Temp2 <= -10) {positionX = 100;}
+  tft.drawCircle(positionX, 37, 3, TFT_WHITE);
+  tft.drawCircle(positionX, 76, 3, TFT_WHITE);
+  tft.drawString("C", positionX + 10, 37);
+  tft.drawString("C", positionX + 10, 76);
 
   // 12V Batt
   tft.fillRect(145, 36, 118, 24, TFT_BLACK);
@@ -546,6 +551,7 @@ bool SendDataSimpleAPI() {
 
 void SerialPrintValues() {
   Serial.println("Topolino Info Display - Values");
+  Serial.println("Can Messages Processed: " + String(CanMessagesProcessed));
   Serial.println(" - ECU ODO: " + String(Value_ECU_ODO));
   Serial.println(" - ECU Speed: " + String(Value_ECU_Speed));
   Serial.println(" - OBC Remaining Time: " + String(Value_OBC_RemainingTime));
