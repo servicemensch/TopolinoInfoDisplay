@@ -1,4 +1,5 @@
 # Topolino Info Display
+![default screen](info\default_screen.jpg)
 
 ## Hardware:
 - [LilyGo T-Display S3](https://lilygo.cc/products/t-display-s3?variant=42284559827125) (ESP32 + 1,9" 8Bit LCD Screen)
