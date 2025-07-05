@@ -32,7 +32,7 @@ const long SendDataInterval = 30 * 1000;
 // CAN values
 int Value_ECU_ODO = -1;
 int Value_ECU_Speed = -1;
-int Value_OBC_RemainingTime = -1;
+int Value_OBC_RemainingMinutes = -1;
 float Value_12VBattery = -1;
 float Value_Battery_Temp1 = -1;
 float Value_Battery_Temp2 = -1;
@@ -126,11 +126,12 @@ void loop() {
   if (currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval){
     DisplayRefreshLastRun = currentMillis;
     DisplayRefresh();
-    SerialPrintValues();
+    //SerialPrintValues();
     //DebugFakeValues();
   }
 
-  if (currentMillis - SendDataLastRun >= SendDataInterval && TransmitValuesChanged){
+  if (currentMillis - SendDataLastRun >= SendDataInterval && TransmitValuesChanged && Value_ECU_Speed == 0) // Send only when speed is 0 and values has changed
+  {
     SendDataLastRun = currentMillis;
     WIFICheckConnection();
     SendDataSimpleAPI();
@@ -167,7 +168,6 @@ void CANCheckMessage(){
       CanMessagesProcessed++;
       switch (canMsg.id) {
         // Electronic control Unit (ECU)
-        // ---- To be checked ----
         case 0x581: {
           SetCANStatusInidcator(TFT_BLUE);
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
@@ -184,7 +184,6 @@ void CANCheckMessage(){
           break;
 
         // Onboard Charger
-        // ---- To be checked ----
         case 0x582: {
           SetCANStatusInidcator(TFT_BLUE);
           if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
@@ -192,7 +191,7 @@ void CANCheckMessage(){
           // Remaining Time
           unsigned int value = canMsg.data[1] << 8 | canMsg.data[0];
           //Serial.println("- CAN Value Remaining Time: " + String(value)); 
-          Value_OBC_RemainingTime = value;
+          Value_OBC_RemainingMinutes = value / 60;
           }
           break;
 
@@ -256,8 +255,9 @@ void CANCheckMessage(){
         case 0x713: {
           SetCANStatusInidcator(TFT_BLUE);
           if (!canMsg.len == 7) {Serial.println("CAN: Wrong Lenght"); break;}
+          Serial.println("CAN: Display Message Data:" + String(canMsg.data[0],HEX) + " " + String(canMsg.data[1],HEX) + " " + String(canMsg.data[2],HEX) + " " + String(canMsg.data[3],HEX) + " " + String(canMsg.data[4],HEX) + " " + String(canMsg.data[5],HEX) + " " + String(canMsg.data[6],HEX));
 
-          unsigned int value1 = canMsg.data[0] & 0b11; // Get last 2 bits
+          int value1 = ((canMsg.data[1] & 0x01) << 1) | ((canMsg.data[0] >> 7) & 0x01);
           // Gear
           switch (value1) {
             case 0b00: // 0
@@ -276,22 +276,22 @@ void CANCheckMessage(){
               Value_Display_Gear = "?";
               break;
             }
-          //Serial.println("- CAN Value Gear: " + String(canMsg.data[0], HEX));
+          Serial.println("- CAN Value Gear Selected Bits: " + String(value1, BIN));
 
           // Remaining Distance
-          unsigned int value2 = canMsg.data[0] << 7;
-          //Serial.println("- CAN Value Remaining Distance: " + String(value2));
+          unsigned int value2 = canMsg.data[0] >> 1;
+          Serial.println("- CAN Value Remaining Distance1: " + String(canMsg.data[0], BIN));
+          Serial.println("- CAN Value Remaining Distance2: " + String(value2, BIN));
           Value_Display_RemainingDistance = value2;
 
           // Break indicator
-          unsigned int value3 = (canMsg.data[3] & 0b1100) >> 2; // Get bits 2 and 3
           if ((canMsg.data[3] & (1 << 6)) != 0) {
             Value_Display_Break = 1; // Bit 30 is set
             }
           else {
             Value_Display_Break = 0; // Bit 30 is not set
             }
-          //Serial.println("- CAN Value Break: " + String(canMsg.data[3], HEX));
+          Serial.println("- CAN Value Break: " + String(canMsg.data[3], BIN) + " Bit 30: " + String((canMsg.data[3] >> 3) & 0x01, BIN));
           
           //Ready indicator
           if ((canMsg.data[2] & (1 << 3)) != 0) {
@@ -300,7 +300,7 @@ void CANCheckMessage(){
           else {
             Value_Display_Ready = 0; // Bit 19 is not set
             }
-          //Serial.println("- CAN Value Ready: " + String(canMsg.data[2], HEX));
+          Serial.println("- CAN Value Ready: " + String(canMsg.data[2], BIN));
           }
           break;
 
@@ -554,7 +554,7 @@ void SerialPrintValues() {
   Serial.println("Can Messages Processed: " + String(CanMessagesProcessed));
   Serial.println(" - ECU ODO: " + String(Value_ECU_ODO));
   Serial.println(" - ECU Speed: " + String(Value_ECU_Speed));
-  Serial.println(" - OBC Remaining Time: " + String(Value_OBC_RemainingTime));
+  Serial.println(" - OBC Remaining Time: " + String(Value_OBC_RemainingMinutes) + " minutes");
   Serial.println(" - 12V Battery: " + String(Value_12VBattery));
   Serial.println(" - Battery Temp1: " + String(Value_Battery_Temp1));
   Serial.println(" - Battery Temp2: " + String(Value_Battery_Temp2));
