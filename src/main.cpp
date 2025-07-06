@@ -218,7 +218,7 @@ void loop() {
     Serial.println("Trip Energy: " + String(Trip.energyConsumed / 1000)  + " kWh");
 
     // Show Trip results
-
+    DisplayTripResults();
     delay(30000);
 
     DisplayCreateUI();
@@ -643,20 +643,22 @@ bool SendDataSimpleAPI() {
   // SimpleAPI set values bulk
   String URL = "http://10.0.1.51:8087/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
 
-  String DataURLEncoded = "&0_userdata.0.topolino.SoC=" + String(Value_Battery_SoC) + 
-                    "&0_userdata.0.topolino.12VBatt=" + String(Value_12VBattery) +
-                    "&0_userdata.0.topolino.BattA=" + String(Value_Battery_Current) + 
-                    "&0_userdata.0.topolino.BattTemp1=" + String(Value_Battery_Temp1) + 
-                    "&0_userdata.0.topolino.BattTemp2=" + String(Value_Battery_Temp2) +
-                    "&0_userdata.0.topolino.BattV=" + String(Value_Battery_Volt) + 
-                    "&0_userdata.0.topolino.Handbrake=" + String(Value_Status_Handbrake) + 
-                    "&0_userdata.0.topolino.ODO=" + String(Value_ECU_ODO / 10) + 
-                    "&0_userdata.0.topolino.OnBoardChargerRemaining=" + String(Value_OBC_RemainingMinutes) + 
-                    "&0_userdata.0.topolino.Ready=" + String(Value_Display_Ready) + 
-                    "&0_userdata.0.topolino.RemainingKM=" + String(Value_Display_RemainingDistance) + 
-                    "&0_userdata.0.topolino.gear=" + String(Value_Display_Gear) + 
-                    "&0_userdata.0.topolino.speed=" + String(Value_ECU_Speed) +
-                    "ack=true";
+  String DataURLEncoded = "";
+  if (Value_Battery_SoC >= 0 && Value_Battery_SoC <= 100) { DataURLEncoded += "&0_userdata.0.topolino.SoC=" + String(Value_Battery_SoC);}
+  if (Value_12VBattery >= 0 && Value_12VBattery <= 15) { DataURLEncoded += "&0_userdata.0.topolino.12VBatt=" + String(Value_12VBattery); }
+  if (Value_Battery_Current >= -100 && Value_Battery_Current <= 200) { DataURLEncoded += "&0_userdata.0.topolino.BattA=" + String(Value_Battery_Current); }
+  if (Value_Battery_Temp1 >= -20 && Value_Battery_Temp1 <= 70) { DataURLEncoded += "&0_userdata.0.topolino.BattTemp1=" + String(Value_Battery_Temp1); }
+  if (Value_Battery_Temp2 >= -20 && Value_Battery_Temp2 <= 70) { DataURLEncoded += "&0_userdata.0.topolino.BattTemp2=" + String(Value_Battery_Temp2); }
+  if (Value_Battery_Volt >= 40 && Value_Battery_Volt <= 60) { DataURLEncoded += "&0_userdata.0.topolino.BattV=" + String(Value_Battery_Volt); }
+  if (Value_Status_Handbrake == 0 || Value_Status_Handbrake == 1) { DataURLEncoded += "&0_userdata.0.topolino.Handbrake=" + String(Value_Status_Handbrake); }
+  if (Value_ECU_ODO >= 0 && Value_ECU_ODO <= 1000000) { DataURLEncoded += "&0_userdata.0.topolino.ODO=" + String(Value_ECU_ODO / 10); }
+  if (Value_OBC_RemainingMinutes >= 0 ) { DataURLEncoded += "&0_userdata.0.topolino.OnBoardChargerRemaining=" + String(Value_OBC_RemainingMinutes); }
+  if (Value_Display_Ready == 0 || Value_Display_Ready == 1) { DataURLEncoded += "&0_userdata.0.topolino.Ready=" + String(Value_Display_Ready); }
+  if (Value_Display_RemainingDistance >= 0 && Value_Display_RemainingDistance <= 80) { DataURLEncoded += "&0_userdata.0.topolino.RemainingKM=" + String(Value_Display_RemainingDistance); }
+  if (Value_Display_Gear != "") { DataURLEncoded += "&0_userdata.0.topolino.gear=" + String(Value_Display_Gear); }
+  if (Value_ECU_Speed >= 0 && Value_ECU_Speed <= 50) { DataURLEncoded += "&0_userdata.0.topolino.speed=" + String(Value_ECU_Speed); }
+  DataURLEncoded += "&ack=true";
+
   Serial.print("Data: ");
   Serial.println(URL + DataURLEncoded); 
   http.begin(URL + DataURLEncoded);
@@ -719,6 +721,8 @@ void TripRecording() {
   Trip.endKM = Value_ECU_ODO;  
   Trip.energyConsumed += ((Value_Battery_Current * -1) * Value_Battery_Volt) / 60; //Wattsekunde addieren
   if (Trip.endSoC == 0 || Trip.endSoC > Value_Battery_SoC) { Trip.endSoC = Value_Battery_SoC; }
+  Serial.println("Trip engery consumed: " + String(Trip.energyConsumed) + " Current Wattseconds: " + String((Value_Battery_Current * -1) * Value_Battery_Volt / 60));
+  Serial.println("Current: " + String(Value_Battery_Current, 2) + " Volt: " + String(Value_Battery_Volt, 2));
 }
 
 void DisplayTripResults() {
