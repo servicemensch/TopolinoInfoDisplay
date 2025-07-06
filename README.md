@@ -26,5 +26,5 @@ Build as PlatformIO project in Visual Studio Code.
 - [TFT_sSPI](https://doc-tft-espi.readthedocs.io/) - Take care to select the right display un User_Setup_Select.h
 - [ACAN2515](https://github.com/pierremolinaro/acan2515/tree/master)
 
-## Confuguration
+## Configuration
 Rename ./config/config_example.h to config.h and fill the values
