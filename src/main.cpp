@@ -5,7 +5,7 @@
 #include <ACAN2515.h>
 #include <spi.h>
 
-#define VERSION 0.09
+#define VERSION 0.10
 #define DISPLAY_POWER_PIN 15
 #define DISPLAY_BACKLIGHT 38
 #define DISPLAY_HIGHT 170
@@ -82,6 +82,7 @@ bool SendDataSimpleAPI();
 void SerialPrintValues();
 float average(float newvalue, float &buffer, float factor);
 void TripRecording();
+void DisplayTripResults();
 void SetALIVEStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(82, 157, 8, color); }
 void SetCANStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(155, 157, 8, color); }
 void SetWIFIStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(245, 157, 8, color); }
@@ -167,17 +168,7 @@ void loop() {
     //DebugFakeValues();
   }
 
-  if (currentMillis - SendDataLastRun >= SendDataInterval && Value_ECU_Speed <= 1) // Send only when speed is 0 and values has changed
-  {
-    SendDataLastRun = currentMillis;
-    WIFICheckConnection();
-    SendDataSimpleAPI();
-  }
-  else if (Value_ECU_Speed > 1) { // deactivate tranismitting when driving
-    SetWIFIStatusInidcator(TFT_DARKGREY);
-    SetTxStatusInidcator(TFT_DARKGREY);
-  } 
-
+  //Check CAN Messages
   if (can.available() || CanInterrupt) {
     SetCANStatusInidcator(TFT_YELLOW);
     CANCheckMessage();
@@ -207,7 +198,7 @@ void loop() {
   }
 
   // check if trip ends
-  if (Value_Display_Ready == 0 && Value_ECU_Speed <= 0 && TripActive) {
+  if ((Value_Display_Ready == 0 || Value_Display_Gear == "-") && TripActive) {
     TripActive = false;
     
     Serial.println("Trip Duration: " + String((Trip.endTime - Trip.startTime) / 1000 / 60) + " minutes");
@@ -225,11 +216,26 @@ void loop() {
     DisplayRefresh();
   }
 
+  //Send Data  
+  if (currentMillis - SendDataLastRun >= SendDataInterval && Value_ECU_Speed <= 1) // Send only when speed is 0 and values has changed
+  {
+    SendDataLastRun = currentMillis;
+    if (WIFICheckConnection()) {
+      SendDataSimpleAPI();
+    }
+  }
+  else if (Value_ECU_Speed > 1) { // deactivate tranismitting when driving
+    SetWIFIStatusInidcator(TFT_DARKGREY);
+    SetTxStatusInidcator(TFT_DARKGREY);
+  } 
+
   //Serial Output
+  /*
   if (currentMillis - SerialOutputLastRun >= 5000) {
     SerialOutputLastRun = currentMillis;
     SerialPrintValues();
   }
+  */
 
   delay(50); //loop delay
 }
@@ -727,10 +733,10 @@ void TripRecording() {
 
 void DisplayTripResults() {
   tft.fillRect(0, 21, DISPLAY_WIDTH, 121, TFT_BLACK);
+  tft.setTextColor(TFT_WHITE);
   tft.setTextSize(3);
   tft.drawString("Diese Fahrt:", 5, 25);
   tft.setTextSize(2);
-  tft.setTextColor(TFT_WHITE);
   tft.drawString("Dauer: " + String((Trip.endTime - Trip.startTime) / 1000 / 60) + " min. / " + String(Trip.endKM - Trip.startKM / 10, 1) + " km", 5, 55);
   tft.drawString("km/h:  " + String(Trip.maxSpeed, 0) + " max / " + String((float)Trip.speedBuffer / Trip.records,1) + " avg.", 5, 75);
   tft.drawString("kWh:   " + String(Trip.energyConsumed / 1000, 1) + "  " + String((float)(Trip.energyBuffer / Trip.records) / 1000) + " avg.", 5, 95);

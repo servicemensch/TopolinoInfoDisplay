@@ -5,6 +5,7 @@ Shows some details of the electronic system of the car, send it to a central (ho
 ## Drive screen
 ![default screen](info/default_screen.jpg)
 ## Trip information:
+![trip screen](info/trip_screen.jpg)
 
 ## Car compatibility:
 - Fiat Topolino (Testcar: MY 2025)
