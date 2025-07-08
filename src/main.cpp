@@ -156,8 +156,8 @@ void loop() {
   else if ( CanMessagesLastRecived - currentMillis > 5000) { // If no CAN messages received for 5 seconds, set indicator to grey
     SetCANStatusInidcator(TFT_DARKGREY);
   }
-  else if (CanMessagesLastRecived - currentMillis > 5 * 60000) {  
-    SleepStart()
+  else if (CanMessagesLastRecived - currentMillis > 3 * 60000) {  
+    SleepStart();
   }
 
   //Check for new trip recording
@@ -769,7 +769,6 @@ void CanConnect () {
     }
   CanMessagesLastRecived = millis();
 }
-
 
 void SleepStart() {
   Serial.println("Going to sleep...");
