@@ -102,7 +102,7 @@ void setup() {
   
   //Deep Sleep
   esp_sleep_enable_timer_wakeup(DEEP_SLEEP_TIMEOUT);
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)CAN_INTERRUPT, 1); // Wake up on CAN interrupt
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)CAN_INTERRUPT, 0); // Wake up on CAN interrupt
 
 
   // CAN Module pins
