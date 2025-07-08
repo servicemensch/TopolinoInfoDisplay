@@ -5,7 +5,7 @@
 #include <ACAN2515.h>
 #include <spi.h>
 
-#define VERSION 0.10
+#define VERSION 0.11
 #define DISPLAY_POWER_PIN 15
 #define DISPLAY_BACKLIGHT 38
 #define DISPLAY_HIGHT 170
@@ -46,6 +46,9 @@ unsigned long SerialOutputLastRun = 0;
 const unsigned int TripRecordInterval = 1 * 1000;
 unsigned long TripRecordingLastRun = 0;
 
+// Deep Sleep Timeout
+#define DEEP_SLEEP_TIMEOUT 10 * 60 * 1000 // 10 minutes in milliseconds
+
 // CAN values
 int Value_ECU_ODO = -1;
 int Value_ECU_Speed = -1;
@@ -64,8 +67,10 @@ float Value_Battery_Current_Buffer;
 
 
 // globals
+int CanError = 0;
 bool CanInterrupt = false;
 unsigned long CanMessagesProcessed = 0;
+unsigned long CanMessagesLastRecived = 0;
 trip Trip; // Trip data structure
 bool TripActive = false;
 
@@ -83,14 +88,22 @@ void SerialPrintValues();
 float average(float newvalue, float &buffer, float factor);
 void TripRecording();
 void DisplayTripResults();
+void CanConnect();
+void SleepStart();
 void SetALIVEStatusInidcator(uint16_t color = TFT_RED) { tft.fillCircle(82, 157, 8, color); }
 void SetCANStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(155, 157, 8, color); }
 void SetWIFIStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(245, 157, 8, color); }
 void SetTxStatusInidcator(uint16_t color = TFT_DARKGREY) { tft.fillCircle(308, 157, 8, color); }
 
+// Make everything ready ===============================================================================
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
+  
+  //Deep Sleep
+  esp_sleep_enable_timer_wakeup(DEEP_SLEEP_TIMEOUT);
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)CAN_INTERRUPT, 1); // Wake up on CAN interrupt
+
 
   // CAN Module pins
   pinMode(CAN_CS, OUTPUT);
@@ -110,46 +123,9 @@ void setup() {
   
   DisplayCreateUI();
 
-  // Text Defaults
-  tft.setTextSize(2);
-  tft.setTextColor(TFT_WHITE);
-
   delay(1000);
 
-  // CAN message filter
-  /* Relevant IDs
-  010110000001
-  010110000010
-  010110010011
-  010110010100
-  010110000000
-  011100010011
-  011100010100
-
-  010100000000 - Filter
-  010101100000 - Mask
-  */
-  const ACAN2515Mask rxm0 = standard2515Mask (0b010101100000,0,0); // Only ID is relevant for filtering
-  const ACAN2515AcceptanceFilter canFilters[] = { 
-    {standard2515Filter (0b010100000000,0,0)} // All Ids matching this filter
-  };
-
-  // CAN Module
-  SetCANStatusInidcator(TFT_BLUE);
-  SPI.begin(CAN_SCK, CAN_MISO, CAN_MOSI);
-  ACAN2515Settings CanSettings (CAN_8MHz, CAN_500Kbs);
-  CanSettings.mRequestedMode = ACAN2515Settings::ListenOnlyMode ;
-  
-  int CanError = can.begin(CanSettings, [] { can.isr () ; });
-
-  if ( CanError == 0) {
-    Serial.println("CAN-Module Initialized Successfully!");
-    SetCANStatusInidcator(TFT_DARKGREY);
-    } 
-  else {
-    Serial.println("ERROR: Initializing CAN-Module failed! ErrCode: " + String(CanError));
-    SetCANStatusInidcator(TFT_RED);
-    }
+  CanConnect();
 
   // WIFI
   WIFIConnect();
@@ -171,7 +147,17 @@ void loop() {
   //Check CAN Messages
   if (can.available() || CanInterrupt) {
     SetCANStatusInidcator(TFT_YELLOW);
+    CanMessagesLastRecived = currentMillis;
     CANCheckMessage();
+  }
+  else if (CanError) {
+    CanConnect();
+  }
+  else if ( CanMessagesLastRecived - currentMillis > 5000) { // If no CAN messages received for 5 seconds, set indicator to grey
+    SetCANStatusInidcator(TFT_DARKGREY);
+  }
+  else if (CanMessagesLastRecived - currentMillis > 5 * 60000) {  
+    SleepStart()
   }
 
   //Check for new trip recording
@@ -210,19 +196,22 @@ void loop() {
 
     // Show Trip results
     DisplayTripResults();
-    delay(30000);
+    delay(15000); // Show Trip results for 15 seconds
 
     DisplayCreateUI();
     DisplayRefresh();
   }
 
   //Send Data  
-  if (currentMillis - SendDataLastRun >= SendDataInterval && Value_ECU_Speed <= 1) // Send only when speed is 0 and values has changed
+  if (currentMillis - SendDataLastRun >= SendDataInterval && (Value_Display_Ready < 1 || Value_Display_Gear == "-")) //send in interval if ignition is off
   {
     SendDataLastRun = currentMillis;
     if (WIFICheckConnection()) {
       SendDataSimpleAPI();
     }
+    else if (WIFIConnect()) {
+        SendDataSimpleAPI();
+      }
   }
   else if (Value_ECU_Speed > 1) { // deactivate tranismitting when driving
     SetWIFIStatusInidcator(TFT_DARKGREY);
@@ -237,7 +226,7 @@ void loop() {
   }
   */
 
-  delay(50); //loop delay
+  delay(25); //loop delay
 }
 
 // Functions ===========================================================================================
@@ -737,9 +726,62 @@ void DisplayTripResults() {
   tft.setTextSize(3);
   tft.drawString("Diese Fahrt:", 5, 25);
   tft.setTextSize(2);
-  tft.drawString("Dauer: " + String((Trip.endTime - Trip.startTime) / 1000 / 60) + " min. / " + String(Trip.endKM - Trip.startKM / 10, 1) + " km", 5, 55);
+  tft.drawString("Dauer: " + String((Trip.endTime - Trip.startTime) / 1000 / 60) + " min. / " + String((Trip.endKM - Trip.startKM) / 10, 1) + " km", 5, 55);
   tft.drawString("km/h:  " + String(Trip.maxSpeed, 0) + " max / " + String((float)Trip.speedBuffer / Trip.records,1) + " avg.", 5, 75);
-  tft.drawString("kWh:   " + String(Trip.energyConsumed / 1000, 1) + "  " + String((float)(Trip.energyBuffer / Trip.records) / 1000) + " avg.", 5, 95);
-  tft.drawString("Akku:  " + String(Trip.startSoC) + "% -> " + String(Trip.endSoC) + "% (" + String(Trip.startSoC - Trip.endSoC * 0.06, 2) + " kwh)" , 5, 115);
+  tft.drawString("kWh:   " + String(Trip.energyConsumed / 100000, 2) + " / " + String((float)(Trip.energyBuffer / Trip.records) / 1000) + " avg.", 5, 95);
+  tft.drawString("Akku:  " + String((Trip.startSoC - Trip.endSoC) * -1) + "% -> (" + String((Trip.startSoC - Trip.endSoC) * 0.06, 2) + " kwh)" , 5, 115);
 }
   
+void CanConnect () {
+  // CAN message filter
+  /* Relevant IDs
+  010110000001
+  010110000010
+  010110010011
+  010110010100
+  010110000000
+  011100010011
+  011100010100
+
+  010100000000 - Filter
+  010101100000 - Mask
+  */
+  const ACAN2515Mask rxm0 = standard2515Mask (0b010101100000,0,0); // Only ID is relevant for filtering
+  const ACAN2515AcceptanceFilter canFilters[] = { 
+    {standard2515Filter (0b010100000000,0,0)} // All Ids matching this filter
+  };
+
+  // CAN Module
+  SetCANStatusInidcator(TFT_BLUE);
+  SPI.begin(CAN_SCK, CAN_MISO, CAN_MOSI);
+  ACAN2515Settings CanSettings (CAN_8MHz, CAN_500Kbs);
+  CanSettings.mRequestedMode = ACAN2515Settings::ListenOnlyMode ;
+  
+  CanError = can.begin(CanSettings, [] { can.isr () ; });
+
+  if ( CanError == 0) {
+    Serial.println("CAN-Module Initialized Successfully!");
+    SetCANStatusInidcator(TFT_LIGHTGREY);
+    } 
+  else {
+    Serial.println("ERROR: Initializing CAN-Module failed! ErrCode: " + String(CanError));
+    SetCANStatusInidcator(TFT_RED);
+    }
+  CanMessagesLastRecived = millis();
+}
+
+
+void SleepStart() {
+  Serial.println("Going to sleep...");
+  SetALIVEStatusInidcator(TFT_DARKGREY);
+  SetCANStatusInidcator(TFT_DARKGREY);
+  SetWIFIStatusInidcator(TFT_DARKGREY);
+  SetTxStatusInidcator(TFT_DARKGREY);
+  
+  // Turn off display power
+  digitalWrite(DISPLAY_POWER_PIN, LOW);
+  digitalWrite(DISPLAY_BACKLIGHT, LOW);
+
+  // Go to deep sleep
+  esp_deep_sleep_start();
+}
