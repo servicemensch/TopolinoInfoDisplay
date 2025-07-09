@@ -19,7 +19,7 @@ Shows some details of the electronic system of the car, send it to a central (ho
 - 3D printed OBD2 plug
 
 ## Wireing:
-![fizing diagram](info/Wireing.png)
+![fizing diagram](info/hardware/v1 - LilyGo T-Display S3/Wireing.png)
 
 |  | T-Display S3 | MCP2515_CAN |
 |-|-|-|
