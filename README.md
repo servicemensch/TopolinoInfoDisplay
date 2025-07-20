@@ -14,12 +14,14 @@ Shows some details of the electronic system of the car, send it to a central (ho
 
 ---
 # Hardware (Development enviroment):
+## Version 1
 - [LilyGo T-Display S3](https://lilygo.cc/products/t-display-s3?variant=42284559827125) (ESP32 + 1,9" 8Bit LCD Screen)
 - [MCP 2515 Can Bus module](https://www.az-delivery.de/products/mcp2515-can-bus-modul-1)
 - 3D printed OBD2 plug
+- 3D printed housing
 
-## Wireing:
-![fizing diagram](info/hardware/v1 - LilyGo T-Display S3/Wireing.png)
+### Wireing (Version 1):
+![fizing diagram](info/hardware/v1%20-%20LilyGo%20T-Display%20S3/Wireing.png)
 
 |  | T-Display S3 | MCP2515_CAN |
 |-|-|-|
@@ -30,6 +32,14 @@ Shows some details of the electronic system of the car, send it to a central (ho
 | SPI MOSI | PIN 11 | SI |
 | Serial clock | PIN 12 | SCK |
 | Interrupt | PIN 3 | INT |
+
+## Version 2
+- [NodeMCU ESP32 Development Board 30 PIN](https://amzn.eu/d/eRXytsF)
+- [1,28" TFT round GC9A01](https://amzn.eu/d/7S9U4s6)
+- [MCP 2515 Can Bus module](https://www.az-delivery.de/products/mcp2515-can-bus-modul-1)
+
+### Wireing (Version 2):
+![v2 wireing diagram](info/hardware/v2%20-%201.28%20round%20TFT/HWv2_wireing.png)
 
 # Software:
 Build as **PlatformIO** project in **Visual Studio Code**.
