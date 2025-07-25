@@ -6,7 +6,7 @@
 #include <spi.h>
 
 #define VERSION 0.20a
-#define DISPLAY_POWER_PIN 4
+#define DISPLAY_POWER_PIN 22
 #define CAN_INTERRUPT 27
 #define CAN_CS 33
 #define CAN_MOSI 13
@@ -104,7 +104,7 @@ void setup() {
   pinMode(CAN_INTERRUPT, INPUT_PULLUP);
   pinMode(DISPLAY_POWER_PIN, OUTPUT);
 
-  //Deep Sleep
+  //Deep Sleep config
   esp_sleep_enable_timer_wakeup(DEEP_SLEEP_TIMEOUT);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)CAN_INTERRUPT, 0); // Wake up on CAN interrupt
 
@@ -116,7 +116,7 @@ void setup() {
 
   // Initialize display
   tft.init();
-  tft.fillScreen(TFT_BLACK);
+  tft.fillScreen(COLOR_BACKGROUND);
   
   delay(1000);
 
@@ -135,6 +135,8 @@ void setup() {
 
 // Main Loop ===========================================================================================
 void loop() {
+  digitalWrite(ONBOARD_LED, HIGH);
+
   unsigned long currentMillis = millis();
   //Serial.println(" - Tick: " + String(currentMillis));
   if (currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval){
@@ -221,6 +223,7 @@ void loop() {
   */
 
   delay(25); //loop delay
+  digitalWrite(ONBOARD_LED, LOW);
 }
 
 // Functions ===========================================================================================
@@ -488,7 +491,7 @@ void WIFIDisconnect(){
 }
 
 void DisplayMainUI() {
-  tft.fillScreen(COLOR_BACKGROUND);
+  //tft.fillScreen(COLOR_BACKGROUND);
   tft.setTextFont(1);
   
   //Consumption Background
