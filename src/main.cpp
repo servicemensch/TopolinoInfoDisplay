@@ -5,7 +5,7 @@
 #include <ACAN2515.h>
 #include <spi.h>
 
-#define VERSION 0.20a
+#define VERSION 0.20b
 #define DISPLAY_POWER_PIN 22
 #define CAN_INTERRUPT 27
 #define CAN_CS 33
@@ -20,6 +20,7 @@
 #define COLOR_BACKGROUND 0x2104
 #define COLOR_BG_GREEN 0x0140
 #define COLOR_BG_RED 0x3000
+#define COLOR_TOPOLINO 0x07fc
 
 
 struct trip {
@@ -32,13 +33,13 @@ struct trip {
   int endSoC = 0;
 };
 struct CANValues {
-  int ODO = 9999;
+  int ODO = 0;
   int Speed = 0;
-  int OBCRemainingMinutes = 300;
-  float Battery = 12.0;
-  int Temp1 = -1;
-  int Temp2 = -1;
-  float Volt = 42;
+  int OBCRemainingMinutes = 65555;
+  float Battery = 0.0;
+  int Temp1 = -99;
+  int Temp2 = -99;
+  float Volt = 0;
   int SoC = 101;
   String Gear = "?";
   int RemainingDistance = 0;
@@ -55,15 +56,16 @@ ACAN2515 can((int)CAN_CS, hspi, (int)CAN_INTERRUPT);
 
 //Loops
 unsigned long DisplayRefreshLastRun = 0;
-const unsigned int DisplayRefreshInterval = 0.25 * 1000; 
+const unsigned int DisplayRefreshInterval = 0.33 * 1000; 
 unsigned long SendDataLastRun = 0;
 const unsigned int SendDataInterval = 30 * 1000; 
 unsigned long SerialOutputLastRun = 0;
 const unsigned int TripRecordInterval = 1 * 1000;
 unsigned long TripRecordingLastRun = 0;
+unsigned long KeepAliveLastRun = 0;
 
 // Deep Sleep Timeout
-#define DEEP_SLEEP_TIMEOUT 10 * 60 * 1000 // 10 minutes in milliseconds
+#define DEEP_SLEEP_TIMEOUT 5 * 60 * 1000 // 10 minutes in milliseconds
 
 // Globals
 int CanError = 0;
@@ -73,6 +75,7 @@ float Value_Battery_Current_Buffer = 0;
 trip Trip; // Trip data structure
 CANValues canValues; // CAN values structure
 bool TripActive = false;
+bool DataToSend = false;
 unsigned long StatusIndicatorStatus = TFT_DARKGREY;
 unsigned long StatusIndicatorCAN = TFT_DARKGREY;
 unsigned long StatusIndicatorWIFI = TFT_DARKGREY;
@@ -124,21 +127,31 @@ void setup() {
   CanConnect(); 
   delay(500);
 
-  // WIFI
-  WIFIConnect();
-  delay(500);
-
   digitalWrite(ONBOARD_LED, LOW);
   // Debug
   //DebugFakeValues();
+  //DisplayTripResults();
+  //delay(60000);
+  //tft.fillScreen(COLOR_BACKGROUND);
 }
 
 // Main Loop ===========================================================================================
 void loop() {
-  digitalWrite(ONBOARD_LED, HIGH);
-
   unsigned long currentMillis = millis();
-  //Serial.println(" - Tick: " + String(currentMillis));
+//Serial.println(" - Tick: " + String(currentMillis));
+
+  // Be Alive  status
+  if (currentMillis - KeepAliveLastRun >= 1000) {
+    KeepAliveLastRun = currentMillis;
+    digitalWrite(ONBOARD_LED, !digitalRead(ONBOARD_LED));
+    if (StatusIndicatorStatus == TFT_WHITE) {
+      if (TripActive) { StatusIndicatorStatus = TFT_BLUE; }
+      else { StatusIndicatorStatus = TFT_GREEN; }
+    }
+    else {StatusIndicatorStatus = TFT_WHITE;}
+  }
+
+  //DisplayRefresh
   if (currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval){
     DisplayRefreshLastRun = currentMillis;
     DisplayMainUI();
@@ -198,14 +211,14 @@ void loop() {
   }
 
   //Send Data  
-  if (currentMillis - SendDataLastRun >= SendDataInterval && (canValues.Ready < 1 || canValues.Gear == "-")) //send in interval if ignition is off
+  if (DataToSend && currentMillis - SendDataLastRun >= SendDataInterval && (canValues.Ready < 1 || canValues.Gear == "-")) //send in interval if ignition is off
   {
     SendDataLastRun = currentMillis;
     if (WIFICheckConnection()) {
       SendDataSimpleAPI();
     }
     else if (WIFIConnect()) {
-        SendDataSimpleAPI();
+        if (SendDataSimpleAPI()) { DataToSend = false; }
       }
   }
   else if (canValues.Speed > 1) { // deactivate tranismitting when driving
@@ -223,7 +236,7 @@ void loop() {
   */
 
   delay(25); //loop delay
-  digitalWrite(ONBOARD_LED, LOW);
+
 }
 
 // Functions ===========================================================================================
@@ -433,6 +446,7 @@ void CANCheckMessage(){
 
           break;
         }
+        if (StatusIndicatorCAN == TFT_BLUE) {DataToSend = true; StatusIndicatorTx = TFT_YELLOW; } // knonw CAN message has changed values
       }
     else {
       // unknow CAN Message
@@ -492,7 +506,6 @@ void WIFIDisconnect(){
 
 void DisplayMainUI() {
   //tft.fillScreen(COLOR_BACKGROUND);
-  tft.setTextFont(1);
   
   //Consumption Background
   tft.drawSmoothArc(120,120, 121, 105, 150, 240, COLOR_BG_RED,COLOR_BACKGROUND, true);
@@ -501,22 +514,23 @@ void DisplayMainUI() {
   if (canValues.Current <0) {
     //Consumption negative
     int arcLenght = map(canValues.Current, -150, 0, 240, 150);
-    tft.drawSmoothArc(120,120, 121, 105, 150, arcLenght, TFT_RED,COLOR_BACKGROUND, true);
+    tft.drawSmoothArc(120,120, 118, 107, 150, arcLenght, TFT_RED,COLOR_BACKGROUND, true);
   }
   else if (canValues.Current > 0) {
     //Consumption positive
     int arcLenght = map(canValues.Current, 0, 75, 0, 30);
-    tft.drawSmoothArc(120,120, 121, 105, 150 - arcLenght, 150, TFT_DARKGREEN,COLOR_BACKGROUND, true);
+    tft.drawSmoothArc(120,120, 118, 107, 150 - arcLenght, 150, TFT_DARKGREEN,COLOR_BACKGROUND, true);
   }
   else {
     // No Consumption
-    tft.drawSmoothArc(120,120, 121, 105, 149, 150, TFT_DARKGREY,COLOR_BACKGROUND, true);
+    tft.drawSmoothArc(120,120, 118, 107, 149, 150, TFT_DARKGREY,COLOR_BACKGROUND, true);
   }
  
   // Battery Temperature
   tft.drawSmoothArc(120,120, 121, 110, 45, 90, COLOR_ALMOSTBLACK,COLOR_BACKGROUND, true);
   float tempAverage = (canValues.Temp1 + canValues.Temp2) / 2.0;
   int arcLenght = map(tempAverage, -10, 50, 45, 90);
+  if (arcLenght < 46) { arcLenght = 46;}
   tft.drawSmoothArc(120,120, 121, 110, 45, arcLenght, TFT_ORANGE,COLOR_BACKGROUND, true);
   tft.setTextSize(1);
   if (tempAverage > 45) { tft.setTextColor(TFT_RED); }
@@ -528,6 +542,7 @@ void DisplayMainUI() {
   // 12Volt Battery
   tft.drawSmoothArc(120,120, 121, 110, 270, 315, COLOR_ALMOSTBLACK, COLOR_BACKGROUND, true);
   arcLenght = map(canValues.Battery, 11.5, 14.5, 0, 45); 
+  if (arcLenght < 1) {arcLenght = 1;}
   tft.drawSmoothArc(120,120, 121, 110, 315 - arcLenght, 315, TFT_BLUE, COLOR_BACKGROUND, true);
   tft.setTextSize(1);
   if (canValues.Battery < 11.5) { tft.setTextColor(TFT_RED); }
@@ -539,7 +554,13 @@ void DisplayMainUI() {
   tft.fillSmoothRoundRect(40, 65, 160, 60, 10, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(3);
-  tft.drawString(String(canValues.Current,1) + "A", 55, 85);
+  int textstart = 55;
+  if (canValues.Current >=10) { textstart = 75;}
+  else if (canValues.Current >= 0) { textstart = 95;}
+  else if (canValues.Current < -100 ) { textstart = 55;}
+  else if (canValues.Current < -10) { textstart = 75;}
+  else if (canValues.Current < 0) { textstart = 95;}
+  tft.drawString(String(canValues.Current,1) + "A", textstart, 85);
 
   //Battery Voltage
   tft.fillSmoothRoundRect(85, 130, 70, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
@@ -592,11 +613,59 @@ void DisplayTripResults() {
   tft.drawString("kWh:   " + String(Trip.energyConsumed / 100000, 2) + " / " + String((float)(Trip.energyBuffer / Trip.records) / 1000) + " avg.", 5, 95);
   tft.drawString("Akku:  " + String((Trip.startSoC - Trip.endSoC) * -1) + "% -> (" + String((Trip.startSoC - Trip.endSoC) * 0.06, 2) + " kwh)" , 5, 115);
   */
+
+  tft.fillScreen(COLOR_BACKGROUND);
+  tft.setTextColor(COLOR_TOPOLINO);
+  tft.setTextSize(2);
+  tft.drawString("Diese Fahrt:",50, 23, 2);
+  int positionX = 25;
+  int positionY = 55;
+  tft.fillSmoothRoundRect(positionX, positionY, 190, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
+  tft.setTextColor(COLOR_TOPOLINO);
+  tft.setTextSize(1);
+  tft.drawString("Dauer", positionX +10 , positionY +2, 2);
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(2);
+  if (((Trip.endTime - Trip.startTime) / 1000 / 60) >= 10) {
+    tft.drawString(String((Trip.endTime - Trip.startTime) / 1000 / 60) + " Min | " + String((Trip.endKM - Trip.startKM) / 10, 1) + "km", positionX +10, positionY +19);
+  }
+  else {
+    tft.drawString(" " + String((Trip.endTime - Trip.startTime) / 1000 / 60) + " Min | " + String((Trip.endKM - Trip.startKM) / 10, 1) + "km", positionX +10, positionY +19);
+  }
+  positionY += 43;
+  tft.fillSmoothRoundRect(positionX, positionY, 190, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
+  tft.setTextColor(COLOR_TOPOLINO);
+  tft.setTextSize(1);
+  tft.drawString("km/h", positionX +10 , positionY +1, 2);
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(2);
+  tft.drawString(String((((Trip.endKM - Trip.startKM) / 10) / (Trip.endTime - Trip.startTime) / 1000 / 60) * 60,1) + "   | " + String(Trip.maxSpeed, 0), positionX +10, positionY +19);
+  tft.drawSmoothCircle(positionX +75, positionY +25, 7, TFT_WHITE, COLOR_BACKGROUND);
+  tft.drawLine(positionX +67, positionY +32, positionX +83, positionY +18, TFT_WHITE);
+  tft.fillTriangle(positionX +155, positionY +33, positionX +175, positionY +33, positionX +175, positionY +22, TFT_WHITE);
+  positionY += 43;
+  tft.fillSmoothRoundRect(positionX, positionY, 190, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
+  tft.setTextColor(COLOR_TOPOLINO);
+  tft.setTextSize(1);
+  tft.drawString("kW/h", positionX +10 , positionY +0, 2);
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(2);
+  tft.drawString("  " + String(((Trip.startSoC - Trip.endSoC) * -1) *0.056, 1) + "  | " + String(((Trip.startSoC - Trip.endSoC) * -1) *0.056 / (Trip.endKM - Trip.startKM) / 10,1), positionX +10, positionY +19);
+  tft.drawSmoothCircle(positionX +170, positionY +25, 7, TFT_WHITE, COLOR_BACKGROUND);
+  tft.drawLine(positionX +162, positionY +33, positionX +178, positionY +18, TFT_WHITE);
+  positionY += 43;
+  tft.fillSmoothRoundRect(65, positionY, 110, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
+  tft.setTextSize(2);
+  tft.setTextColor(COLOR_TOPOLINO);
+  tft.drawString("Akku:", 72, positionY +13);
+  tft.setTextColor(TFT_WHITE);
+  tft.drawString(String((Trip.startSoC - Trip.endSoC) * -1) + "%", 132, positionY +13);
 }
 
 bool SendDataSimpleAPI() {
   Serial.println("Send Data via REST");
   StatusIndicatorTx = TFT_BLUE;
+  bool result = false;
 
   HTTPClient http;
   // SimpleAPI set values bulk
@@ -627,16 +696,16 @@ bool SendDataSimpleAPI() {
 
   if (httpResponseCode == 200) {
     StatusIndicatorTx = TFT_GREEN;
-    return true;
+    result = true;
   }
   else {
     StatusIndicatorTx = TFT_RED;
     Serial.print("HTTP Response Code: ");
     Serial.println(httpResponseCode);
-    return false;
   }
 
   http.end();
+  return result; 
 }
 
 void SerialPrintValues() {
