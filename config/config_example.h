@@ -7,3 +7,5 @@ const char* YourWIFI_Passphrase = "YourPassword";
 // SimpleApi (ioBroker) Authenticartion
 const char* YourSimpleAPI_User = "Username";
 const char* YourSimpleAPI_Password = "UnsecurePassword";
+const char* YourSimpleAPI_Port = "8087";
+const char* YourSimpleAPI_IP = "1.2.3.4";

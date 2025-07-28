@@ -4,10 +4,11 @@
 #include <HTTPClient.h>
 #include <ACAN2515.h>
 #include <spi.h>
+#include <ArduinoOTA.h>
 
 //#define DEBUG
 
-const char VERSION[] = "0.20e";
+const char VERSION[] = "0.21a";
 #define DISPLAY_POWER_PIN 22
 #define CAN_INTERRUPT 27
 #define CAN_CS 33
@@ -36,18 +37,31 @@ struct trip {
 };
 struct CANValues {
   int ODO = 0;
+  bool ODOUp = false;
   int Speed = 0;
+  bool SpeedUp = false;
   int OBCRemainingMinutes = 65555;
+  bool OBCRemainingMinutesUp = false;
   float Battery = 0.0;
+  bool BatteryUp = false;
   int Temp1 = -99;
+  bool Temp1Up = false;
   int Temp2 = -99;
+  bool Temp2Up = false;
   float Volt = 0;
+  bool VoltUp = false;
   int SoC = 101;
+  bool SoCUp = false;
   String Gear = "?";
+  bool GearUp = false;
   int RemainingDistance = 0;
+  bool RemainingDistanceUp = false;
   int Ready = -1; // 1=Ready, 0=Not Ready, -1=Unknown
+  bool ReadyUp = false;
   float Current = 0;
+  bool CurrentUp = false;
   int Handbrake = -1; // 1=On, 0=Off, -1=Unknown
+  bool HandbreakeUp = false;
 };
 
 TFT_eSPI tft = TFT_eSPI();
@@ -67,7 +81,7 @@ unsigned long TripRecordingLastRun = 0;
 unsigned long KeepAliveLastRun = 0;
 
 // Deep Sleep Timeout
-#define DEEP_SLEEP_TIMEOUT 5 * 60 * 1000 // 10 minutes in milliseconds
+#define DEEP_SLEEP_TIMEOUT 10 * 60 * 1000 // 10 minutes in milliseconds
 
 // Globals
 int CanError = 0;
@@ -82,6 +96,7 @@ unsigned long StatusIndicatorStatus = TFT_DARKGREY;
 unsigned long StatusIndicatorCAN = TFT_DARKGREY;
 unsigned long StatusIndicatorWIFI = TFT_DARKGREY;
 unsigned long StatusIndicatorTx = TFT_DARKGREY;
+bool IsSleeping = false;
 
 // put function declarations here:
 void CANCheckMessage();
@@ -92,9 +107,10 @@ void DisplayBoot();
 bool SendDataSimpleAPI();
 void SerialPrintValues();
 void TripRecording();
+void SleepLightStart();
 void DisplayTripResults();
 void CanConnect();
-void SleepStart();
+void SleepDeepStart();
 float average(float newvalue, float &buffer, float factor);
 void DebugFakeValues();
 void DisplayMainUI();
@@ -133,7 +149,15 @@ void setup() {
   // Show Welcome Screen
   DisplayBoot();
   tft.fillScreen(COLOR_BACKGROUND);
+
+  // Connect WIFI to enable OTA update at boot
+  WIFIConnect();
   
+  // Over The Air update config
+  ArduinoOTA.setHostname("TopolinoInfoDisplayOTA");
+  ArduinoOTA.begin();
+  
+
   digitalWrite(ONBOARD_LED, LOW);
 
 #ifdef DEBUG
@@ -158,7 +182,7 @@ void loop() {
   }
 
   //DisplayRefresh
-  if (currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval){
+  if (currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval && !IsSleeping){
     DisplayRefreshLastRun = currentMillis;
     DisplayMainUI();
     #ifdef DEBUG
@@ -175,10 +199,6 @@ void loop() {
   else if (CanError) {
     Serial.println("CAN Connect...");
     CanConnect();
-  }
-  else if ((currentMillis - CanMessagesLastRecived) > (3 * 60000)) {  
-    StatusIndicatorCAN =  TFT_DARKCYAN;
-    SleepStart();
   }
   else if ( CanMessagesLastRecived - currentMillis > 5000) { // If no CAN messages received for 5 seconds, set indicator to grey
     StatusIndicatorCAN =  TFT_DARKGREY;
@@ -248,8 +268,20 @@ void loop() {
   }
   */
 
-  delay(25); //loop delay
+  //Check OTA Updates
+  ArduinoOTA.handle();
 
+  // Sleep modes
+  if ((currentMillis - CanMessagesLastRecived) > (DEEP_SLEEP_TIMEOUT / 2) && !IsSleeping) {  
+    SleepLightStart();
+  }
+
+  if ((currentMillis - CanMessagesLastRecived) > DEEP_SLEEP_TIMEOUT) {  
+    SleepDeepStart();
+  }
+
+
+  delay(25); //loop delay
 }
 
 // Functions ===========================================================================================
@@ -307,6 +339,7 @@ void CANCheckMessage(){
 
     if (!canMsg.rtr) {
       CanMessagesProcessed++;
+      IsSleeping = false;
       switch (canMsg.id) {
         // Electronic control Unit (ECU)
         case 0x581: { 
@@ -316,11 +349,13 @@ void CANCheckMessage(){
           unsigned int value1 = canMsg.data[6] << 16 | canMsg.data[5] << 8 | canMsg.data[4];
           //Serial.println("- CAN Value ODO: " + String(value1));
           canValues.ODO = (float)value1;
+          canValues.ODOUp = true;
 
           // Speed 
           unsigned int value = canMsg.data[7];
           //Serial.println("- CAN Value Speed: " + String(value));          
           canValues.Speed = value;
+          canValues.SpeedUp = true;
           }
           break;
 
@@ -333,6 +368,7 @@ void CANCheckMessage(){
           unsigned int value = canMsg.data[1] << 8 | canMsg.data[0];
           //Serial.println("- CAN Value Remaining Time: " + String(value)); 
           canValues.OBCRemainingMinutes = value / 60;
+          canValues.OBCRemainingMinutesUp = true;
           }
           break;
 
@@ -343,6 +379,7 @@ void CANCheckMessage(){
           unsigned int value = (canMsg.data[1] << 8) | canMsg.data[0];
           //Serial.println("- CAN Value 12V: " + String(value));
           canValues.Battery = (float)value / 100;
+          canValues.BatteryUp = true;
           }
           break;
 
@@ -355,11 +392,13 @@ void CANCheckMessage(){
           int value1 = canMsg.data[0];
           //Serial.println("- CAN Value Temp1: " + String(value1));
           canValues.Temp1 = value1;
+          canValues.Temp1Up = true;
 
           //Temp 2
           int value2 = canMsg.data[3];
           //Serial.println("- CAN Value Temp2: " + String(value2));
           canValues.Temp2 = value2;
+          canValues.Temp2Up = true;
           }          
           break;
         
@@ -375,18 +414,21 @@ void CANCheckMessage(){
             }
           //Serial.println("- CAN Value Current: " + String(value1));
          canValues.Current = average((float)value1 / 10, Value_Battery_Current_Buffer, 3); // Average over 3 values 
+         canValues.CurrentUp = true;
 
           //Voltage
           int value2 = (canMsg.data[3] << 8) | canMsg.data[2];
           //Serial.println("- CAN Value Voltage: " + String(value2));
           if (value2 > 4200 && value2 < 6500) { // Check is value is in valid range
             canValues.Volt = (float)value2 / 100;
+            canValues.VoltUp = true;
           }
         
           // SoC
           unsigned int value3 = canMsg.data[5];
           //Serial.println("- CAN Value SoC: " + String(value3));
           canValues.SoC = value3;
+          canValues.SoCUp = true;
           }
           break;
 
@@ -415,12 +457,14 @@ void CANCheckMessage(){
               canValues.Gear = "?";
               break;
             }
+            canValues.GearUp = true;
           //Serial.println("- CAN Value Gear Selected Bits: " + String(value1, BIN));
 
           // Remaining Distance
           unsigned int value2 = canMsg.data[0] & 0x3F; // Mask to get the lower 6 bits
           //Serial.println("- CAN Value Remaining Distance2: " + String(value2));
           canValues.RemainingDistance = value2;
+          canValues.RemainingDistanceUp = true; 
           
           //Ready indicator
           switch ((canMsg.data[2] & 0b00000111)) { // Check the last 3 bits
@@ -434,6 +478,7 @@ void CANCheckMessage(){
               canValues.Ready = -1; // Default case for safety
               break;
           }
+          canValues.ReadyUp = true;
           //Serial.println("- CAN Value Ready: " + String(canMsg.data[2], BIN)); //ready 0b101  not 0b11
           }
           break;
@@ -455,6 +500,7 @@ void CANCheckMessage(){
             canValues.Handbrake = -1;
             }
           }
+          canValues.HandbreakeUp = true;
           //Serial.println("- CAN Value Brake: " + String(canMsg.data[0], HEX));
 
           break;
@@ -715,22 +761,22 @@ bool SendDataSimpleAPI() {
 
   HTTPClient http;
   // SimpleAPI set values bulk
-  String URL = "http://10.0.1.51:8087/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
+  String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
 
   String DataURLEncoded = "";
-  if (canValues.SoC >= 0 && canValues.SoC <= 100) { DataURLEncoded += "&0_userdata.0.topolino.SoC=" + String(canValues.SoC);}
-  if (canValues.Battery >= 0 && canValues.Battery <= 15) { DataURLEncoded += "&0_userdata.0.topolino.12VBatt=" + String(canValues.Battery); }
-  if (canValues.Current >= -100 && canValues.Current <= 200) { DataURLEncoded += "&0_userdata.0.topolino.BattA=" + String(canValues.Current); }
-  if (canValues.Temp1 >= -20 && canValues.Temp1 <= 70) { DataURLEncoded += "&0_userdata.0.topolino.BattTemp1=" + String(canValues.Temp1); }
-  if (canValues.Temp2 >= -20 && canValues.Temp2 <= 70) { DataURLEncoded += "&0_userdata.0.topolino.BattTemp2=" + String(canValues.Temp2); }
-  if (canValues.Volt >= 40 && canValues.Volt <= 60) { DataURLEncoded += "&0_userdata.0.topolino.BattV=" + String(canValues.Volt); }
-  if (canValues.Handbrake == 0 || canValues.Handbrake == 1) { DataURLEncoded += "&0_userdata.0.topolino.Handbrake=" + String(canValues.Handbrake); }
-  if (canValues.ODO >= 0 && canValues.ODO <= 1000000) { DataURLEncoded += "&0_userdata.0.topolino.ODO=" + String(canValues.ODO / 10); }
-  if (canValues.OBCRemainingMinutes >= 0 ) { DataURLEncoded += "&0_userdata.0.topolino.OnBoardChargerRemaining=" + String(canValues.OBCRemainingMinutes); }
-  if (canValues.Ready == 0 || canValues.Ready == 1) { DataURLEncoded += "&0_userdata.0.topolino.Ready=" + String(canValues.Ready); }
-  if (canValues.RemainingDistance >= 0 && canValues.RemainingDistance <= 80) { DataURLEncoded += "&0_userdata.0.topolino.RemainingKM=" + String(canValues.RemainingDistance); }
-  if (canValues.Gear != "") { DataURLEncoded += "&0_userdata.0.topolino.gear=" + String(canValues.Gear); }
-  if (canValues.Speed >= 0 && canValues.Speed <= 50) { DataURLEncoded += "&0_userdata.0.topolino.speed=" + String(canValues.Speed); }
+  if (canValues.SoCUp) {DataURLEncoded += "&0_userdata.0.topolino.SoC=" + String(canValues.SoC);}
+  if (canValues.BatteryUp) {DataURLEncoded += "&0_userdata.0.topolino.12VBatt=" + String(canValues.Battery); }
+  if (canValues.CurrentUp) { DataURLEncoded += "&0_userdata.0.topolino.BattA=" + String(canValues.Current); }
+  if (canValues.Temp1Up) { DataURLEncoded += "&0_userdata.0.topolino.BattTemp1=" + String(canValues.Temp1); }
+  if (canValues.Temp2Up) { DataURLEncoded += "&0_userdata.0.topolino.BattTemp2=" + String(canValues.Temp2); }
+  if (canValues.VoltUp) { DataURLEncoded += "&0_userdata.0.topolino.BattV=" + String(canValues.Volt); }
+  if (canValues.HandbreakeUp) { DataURLEncoded += "&0_userdata.0.topolino.Handbrake=" + String(canValues.Handbrake); }
+  if (canValues.ODOUp) { DataURLEncoded += "&0_userdata.0.topolino.ODO=" + String(canValues.ODO / 10); }
+  if (canValues.OBCRemainingMinutesUp) { DataURLEncoded += "&0_userdata.0.topolino.OnBoardChargerRemaining=" + String(canValues.OBCRemainingMinutes); }
+  if (canValues.ReadyUp) { DataURLEncoded += "&0_userdata.0.topolino.Ready=" + String(canValues.Ready); }
+  if (canValues.RemainingDistanceUp) { DataURLEncoded += "&0_userdata.0.topolino.RemainingKM=" + String(canValues.RemainingDistance); }
+  if (canValues.GearUp) { DataURLEncoded += "&0_userdata.0.topolino.gear=" + String(canValues.Gear); }
+  if (canValues.SpeedUp) { DataURLEncoded += "&0_userdata.0.topolino.speed=" + String(canValues.Speed); }
   DataURLEncoded += "&ack=true";
 
   Serial.print("Data: ");
@@ -743,6 +789,20 @@ bool SendDataSimpleAPI() {
   if (httpResponseCode == 200) {
     StatusIndicatorTx = TFT_GREEN;
     result = true;
+
+    canValues.SoCUp = false;
+    canValues.BatteryUp = false;
+    canValues.CurrentUp = false;
+    canValues.Temp1Up = false;
+    canValues.Temp2Up = false;
+    canValues.VoltUp = false;
+    canValues.HandbreakeUp = false;
+    canValues.ODOUp = false;
+    canValues.OBCRemainingMinutesUp = false;
+    canValues.ReadyUp = false;
+    canValues.RemainingDistanceUp = false;
+    canValues.GearUp = false;
+    canValues.SpeedUp = false;
   }
   else {
     StatusIndicatorTx = TFT_RED;
@@ -784,19 +844,51 @@ void TripRecording() {
   if (Trip.endSoC == 0 || Trip.endSoC > canValues.SoC) { Trip.endSoC = canValues.SoC; }
 }
 
-void SleepStart() {
-
-  Serial.println("Going to sleep...");
+void SleepLightStart() {
+  IsSleeping = true;
+  Serial.println("Going to light sleep...");
   StatusIndicatorCAN = TFT_DARKGREY;
-  StatusIndicatorStatus = TFT_DARKGREY;
+  StatusIndicatorStatus = TFT_DARKCYAN;
   StatusIndicatorTx = TFT_DARKGREY;
   StatusIndicatorWIFI = TFT_DARKGREY;
+
+  WIFIConnect();
+  SendDataSimpleAPI();
+  delay(3000);
 
   tft.fillScreen(TFT_BLACK);
   tft.setTextSize(3);
   tft.setTextColor(COLOR_TOPOLINO);
   tft.drawString("Sleeping....", 30, 120);
-  delay(3000);
+  
+  // Status Indicator
+  tft.drawRoundRect(63, 190, 55, 20, 8, TFT_BLACK);
+  tft.setTextColor(StatusIndicatorStatus);
+  tft.setTextSize(1);
+  tft.drawString("Status", 73, 197);
+
+  // CAN Indicator
+  tft.drawRoundRect(80, 215, 38, 20, 8, TFT_BLACK);
+  tft.setTextColor(StatusIndicatorCAN);
+  tft.setTextSize(1);
+  tft.drawString("CAN", 90, 222);
+
+  // WIFI Indicator
+  tft.drawRoundRect(122, 190, 55, 20, 8, TFT_BLACK);
+  tft.setTextColor(StatusIndicatorWIFI); 
+  tft.setTextSize(1);
+  tft.drawString("WIFI", 138, 197);
+
+  // Tx Indicator
+  tft.drawRoundRect(122, 215, 38, 20, 8, TFT_BLACK);
+  tft.setTextColor(StatusIndicatorTx);
+  tft.setTextSize(1);
+  tft.drawString("Tx", 135, 222);
+}
+
+void SleepDeepStart() {
+
+  Serial.println("Going to Deep sleep...");
 
   // Turn off display power
   digitalWrite(DISPLAY_POWER_PIN, LOW);
