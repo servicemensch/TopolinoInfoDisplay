@@ -815,13 +815,13 @@ void DisplayTripResults() {
   tft.drawString(String(drivenSoC * -1) + "%", 132, positionY +13);
 }
 
-//TEST: Refresh verbessern (nur arc neu zeuzeichen, Text mit background, Akku Tempersatur anzeige)
+
 void DisplayCharging() {
   //tft.fillScreen(COLOR_BACKGROUND);
 
   tft.setTextColor(COLOR_TOPOLINO, COLOR_BACKGROUND, true);
   tft.setTextSize(2);
-  tft.drawString("Ladevorgang:", 40, 50, 2);
+  tft.drawString("Ladevorgang:", 42, 50, 2);
   // Ladestrom
   tft.setTextSize(3);
   tft.drawString(String(canValues.Current, 1) + " A", 70, 90);
@@ -835,12 +835,12 @@ void DisplayCharging() {
   // Ladedauer
   tft.setTextSize(3);
   tft.setTextColor(COLOR_TOPOLINO, COLOR_BACKGROUND, true);
-  tft.drawString(String((millis() - thisCharge.startTime) / 1000 / 60) + " Min.", 60, 170);
+  tft.drawString(String((millis() - thisCharge.startTime) / 1000 / 60) + " Min.", 60, 165);
   
   // Temperatur Akku
   tft.setTextSize(2);
   tft.setTextColor(COLOR_GREY, COLOR_BACKGROUND, true);
-  tft.drawString(String((float)(canValues.Temp1 + canValues.Temp2) / 2, 1) + " C", 70, 195);
+  tft.drawString(String((float)(canValues.Temp1 + canValues.Temp2) / 2, 1) + " C", 90, 200);
 
   // Animation
   tft.drawSmoothArc(120, 120, 121, 105, 0, 360, COLOR_BACKGROUND, COLOR_BACKGROUND);
@@ -857,7 +857,7 @@ void DisplayChargingResult() {
   tft.fillScreen(COLOR_BACKGROUND);
   tft.setTextColor(COLOR_TOPOLINO);
   tft.setTextSize(2);
-  tft.drawString("Ladevorgang:", 40, 50, 2);
+  tft.drawString("Ladevorgang:", 42, 50, 2);
   // Lademenge
   tft.setTextSize(3);
   tft.drawString(String((thisCharge.endSoC - thisCharge.startSoC) * 0.06, 1) + " kWh", 70, 90);
@@ -871,11 +871,11 @@ void DisplayChargingResult() {
   // Ladedauer
   tft.setTextSize(3);
   tft.setTextColor(COLOR_TOPOLINO);
-  tft.drawString(String((thisCharge.endTime - thisCharge.startTime) / 1000 / 60) + " Min.", 60, 170);
+  tft.drawString(String((thisCharge.endTime - thisCharge.startTime) / 1000 / 60) + " Min.", 60, 165);
   // Temperatur Akku
   tft.setTextSize(2);
   tft.setTextColor(COLOR_GREY, COLOR_BACKGROUND, true);
-  tft.drawString(String((float)(canValues.Temp1 + canValues.Temp2) / 2, 1) + " C", 70, 195);
+  tft.drawString(String((float)(canValues.Temp1 + canValues.Temp2) / 2, 1) + " C", 90, 200);
 
 
   // Charge
