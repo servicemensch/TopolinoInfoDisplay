@@ -3,9 +3,9 @@ Shows some details of the electronic system of the car, send it to a central (ho
 
 
 ## Drive screen
-![default screen](info/default_screen.jpg)
+![default screen](info/hardware/v2-1.28_round_TFT/screen_mainui.jpg)
 ## Trip information:
-![trip screen](info/trip_screen.jpg)
+![trip screen](info/hardware/v2-1.28_round_TFT/screen_tripresults.jpg)
 
 ## Car compatibility:
 - Fiat Topolino (Testcar: MY 2025)
@@ -19,18 +19,7 @@ Shows some details of the electronic system of the car, send it to a central (ho
 - [MCP 2515 Can Bus module](https://www.az-delivery.de/products/mcp2515-can-bus-modul-1)
 - 3D printed OBD2 plug
 
-### Wireing (Version 1):
-|  | T-Display S3 | MCP2515_CAN |
-|-|-|-|
-| Power 5V | 5V | VCC |
-| Ground | GND | GND |
-| Chip select | PIN 10 | CS|
-| SPI MISO | PIN 13 | SO |
-| SPI MOSI | PIN 11 | SI |
-| Serial clock | PIN 12 | SCK |
-| Interrupt | PIN 3 | INT |
-
-## Version 2
+## Version 2 (current)
 - [NodeMCU ESP32 Development Board 30 PIN](https://amzn.eu/d/eRXytsF)
 - [1,28" TFT round GC9A01](https://amzn.eu/d/7S9U4s6)
 - [MCP 2515 Can Bus module](https://www.az-delivery.de/products/mcp2515-can-bus-modul-1)
