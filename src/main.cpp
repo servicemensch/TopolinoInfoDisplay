@@ -8,7 +8,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.55";
+const char VERSION[] = "0.59";
 #define DISPLAY_POWER_PIN 22
 #define CAN_INTERRUPT 27
 #define CAN_CS 33
@@ -260,30 +260,42 @@ void loop() {
     
     // Show Trip results
     DisplayTripResults();
+    //Send Data while showing Results
+    SendDataLastRun = currentMillis;
+    if (WIFICheckConnection()) {
+      if (SendDataSimpleAPI()) { DataToSend = false; }
+    }
+    else if (WIFIConnect()) {
+      if (SendDataSimpleAPI()) { DataToSend = false; }
+    }
+    
     delay(20000); // Show Trip results for 15 seconds
     tft.fillScreen(COLOR_BACKGROUND);
     DisplayMainUI();
   }
 
   // Check if new charge
-  if (canValues.OBCRemainingMinutes >= 0 && !IsCharging) {
+  if (canValues.OBCRemainingMinutes >= 0 && canValues.Current > 0 && !IsCharging) {
     IsCharging = true;
     thisCharge.startSoC = canValues.SoC;
     thisCharge.startTime = currentMillis;
+    tft.fillScreen(COLOR_BACKGROUND);
   }
   if (IsCharging && canValues.OBCRemainingMinutes == -1) {
     IsCharging = false;
     thisCharge.endSoC = canValues.SoC;
     thisCharge.endTime = currentMillis;
 
-    // Show Charge end screen until Deep Sleep
+    // Show Charge end screen
     DisplayChargingResult();
-    IsSleeping = true;
+    delay(60000);
+    tft.fillScreen(COLOR_BACKGROUND);
   }
 
   // Is currently Charging  
-  if (IsCharging && currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval * 2)
+  if (IsCharging && currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval)
   {
+    DisplayRefreshLastRun = currentMillis;
     DisplayCharging();
   }
 
@@ -292,7 +304,7 @@ void loop() {
   {
     SendDataLastRun = currentMillis;
     if (WIFICheckConnection()) {
-      SendDataSimpleAPI();
+      if (SendDataSimpleAPI()) { DataToSend = false; }
     }
     else if (WIFIConnect()) {
         if (SendDataSimpleAPI()) { DataToSend = false; }
@@ -322,7 +334,6 @@ void loop() {
   if ((currentMillis - CanMessagesLastRecived) > (DEEP_SLEEP_TIMEOUT / 2) && !IsSleeping) {  
     SleepLightStart();
   }
-
   if ((currentMillis - CanMessagesLastRecived) > DEEP_SLEEP_TIMEOUT) {  
     SleepDeepStart();
   }
@@ -414,8 +425,8 @@ void CANCheckMessage(){
           // Remaining Time
           unsigned int value = canMsg.data[1] << 8 | canMsg.data[0];
           //Serial.println("- CAN Value Remaining Time: " + String(value)); 
-          if (value == 65555) { canValues.OBCRemainingMinutes = -1; }
-          else { canValues.OBCRemainingMinutes = value / 60; }
+          canValues.OBCRemainingMinutes = value / 60;
+          if (canValues.OBCRemainingMinutes > 600) { canValues.OBCRemainingMinutes = -1; } // not charging
           canValues.OBCRemainingMinutesUp = true;
           }
           break;
@@ -661,7 +672,7 @@ void DisplayMainUI() {
   }
   else {
     // No Consumption
-    tft.drawSmoothArc(120,120, 118, 107, 149, 150, TFT_DARKGREY, COLOR_BACKGROUND, true);
+    tft.drawSmoothArc(120,120, 118, 107, 149, 150, TFT_BLUE, COLOR_BACKGROUND, true);
 
   }
   
@@ -761,6 +772,10 @@ void DisplayTripResults() {
   tft.drawString("Akku:  " + String((Trip.startSoC - Trip.endSoC) * -1) + "% -> (" + String((Trip.startSoC - Trip.endSoC) * 0.06, 2) + " kwh)" , 5, 115);
   */
 
+  float drivenKM = (Trip.endKM - Trip.startKM) / 10;
+  int drivenMin = (Trip.endTime - Trip.startTime) / 1000 / 60;
+  int drivenSoC = Trip.startSoC - Trip.endSoC;
+
   tft.fillScreen(COLOR_BACKGROUND);
   tft.setTextColor(COLOR_TOPOLINO);
   tft.setTextSize(2);
@@ -773,11 +788,11 @@ void DisplayTripResults() {
   tft.drawString("Dauer", positionX +10 , positionY +2, 2);
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(2);
-  if (((Trip.endTime - Trip.startTime) / 1000 / 60) >= 10) {
-    tft.drawString(String((Trip.endTime - Trip.startTime) / 1000 / 60) + " Min | " + String((Trip.endKM - Trip.startKM) / 10, 1) + "km", positionX +10, positionY +19);
+  if (drivenMin >= 10) {
+    tft.drawString(String(drivenMin) + " Min | " + String(drivenKM, 1) + "km", positionX +10, positionY +19);
   }
   else {
-    tft.drawString(" " + String((Trip.endTime - Trip.startTime) / 1000 / 60) + " Min | " + String((Trip.endKM - Trip.startKM) / 10, 1) + "km", positionX +10, positionY +19);
+    tft.drawString(" " + String(drivenMin) + " Min | " + String(drivenKM, 1) + "km", positionX +10, positionY +19);
   }
   positionY += 43;
   tft.fillSmoothRoundRect(positionX, positionY, 190, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
@@ -786,7 +801,7 @@ void DisplayTripResults() {
   tft.drawString("km/h", positionX +10 , positionY +1, 2);
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(2);
-  tft.drawString(String(((Trip.endKM - Trip.startKM) / 10) / ((Trip.endTime - Trip.startTime) / 1000 / 60 / 60), 1) + "   | " + String(Trip.maxSpeed, 0), positionX +10, positionY +19); // gefahrenekilometer / zeit in industriestunden
+  tft.drawString(String((drivenKM / drivenMin) * 60, 1) + "   | " + String(Trip.maxSpeed, 0), positionX +10, positionY +19);
   tft.drawSmoothCircle(positionX +75, positionY +25, 7, TFT_WHITE, COLOR_BACKGROUND);
   tft.drawLine(positionX +67, positionY +32, positionX +83, positionY +18, TFT_WHITE);
   tft.fillTriangle(positionX +155, positionY +33, positionX +175, positionY +33, positionX +175, positionY +22, TFT_WHITE);
@@ -797,7 +812,7 @@ void DisplayTripResults() {
   tft.drawString("kW/h", positionX +10 , positionY +0, 2);
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(2);
-  tft.drawString("  " + String((Trip.startSoC - Trip.endSoC) * 0.06, 1) + "  | " + String(((Trip.startSoC - Trip.endSoC) * 0.06) / ((Trip.endKM - Trip.startKM) / 10),1), positionX +10, positionY +19);
+  tft.drawString("  " + String(drivenSoC * 0.06, 1) + "  | " + String((drivenSoC * 0.06) / drivenKM,1), positionX +10, positionY +19);
   tft.drawSmoothCircle(positionX +170, positionY +25, 7, TFT_WHITE, COLOR_BACKGROUND);
   tft.drawLine(positionX +162, positionY +33, positionX +178, positionY +18, TFT_WHITE);
   positionY += 43;
@@ -806,12 +821,14 @@ void DisplayTripResults() {
   tft.setTextColor(COLOR_TOPOLINO);
   tft.drawString("Akku:", 72, positionY +13);
   tft.setTextColor(TFT_WHITE);
-  tft.drawString(String((Trip.startSoC - Trip.endSoC) * -1) + "%", 132, positionY +13);
+  tft.drawString(String(drivenSoC * -1) + "%", 132, positionY +13);
 }
 
+//TODO: Refresh verbessern (nur arc neu zeuzeichen, Text it background)
 void DisplayCharging() {
-  tft.fillScreen(COLOR_BACKGROUND);
-  tft.setTextColor(COLOR_TOPOLINO);
+  //tft.fillScreen(COLOR_BACKGROUND);
+
+  tft.setTextColor(COLOR_TOPOLINO, COLOR_BACKGROUND, true);
   tft.setTextSize(2);
   tft.drawString("Ladevorgang:", 40, 50, 2);
   // Ladestrom
@@ -819,20 +836,21 @@ void DisplayCharging() {
   tft.drawString(String(canValues.Current, 1) + " A", 70, 90);
   // SoC
   tft.setTextSize(4);
-  tft.setTextColor(TFT_WHITE);
+  tft.setTextColor(TFT_WHITE, COLOR_BACKGROUND, true);
   tft.drawString(String(canValues.SoC) + "%", 140, 125);
   tft.setTextSize(3);
-  tft.setTextColor(COLOR_GREY);
+  tft.setTextColor(COLOR_GREY, COLOR_BACKGROUND, true);
   tft.drawString(String(thisCharge.startSoC) + "% >", 30, 130);  
   // Ladedauer
   tft.setTextSize(3);
-  tft.setTextColor(COLOR_TOPOLINO);
+  tft.setTextColor(COLOR_TOPOLINO, COLOR_BACKGROUND, true);
   tft.drawString(String((millis() - thisCharge.startTime) / 1000 / 60) + " Min.", 60, 170);
   
   // Animation
+  tft.drawSmoothArc(120, 120, 121, 105, 0, 360, COLOR_BACKGROUND, COLOR_BACKGROUND);
   int arcLenght = 45;
   if (thisCharge.helperCircal > 360) {thisCharge.helperCircal = 0;}
-  int arcStart = 0;
+  int arcStart = thisCharge.helperCircal;
   int arcEnd = arcStart + arcLenght;
   if (arcEnd > 360) {arcEnd = arcEnd - 360;}
   tft.drawSmoothArc(120, 120, 121, 105, arcStart, arcEnd, COLOR_TOPOLINO, COLOR_BACKGROUND, true);
@@ -970,6 +988,7 @@ void SleepLightStart() {
     tft.setTextSize(3);
     tft.setTextColor(COLOR_TOPOLINO);
     tft.drawString("Sleeping...", 30, 110);
+    tft.setTextSize(1);
     tft.setTextColor(TFT_WHITE);
     tft.drawString("Sending data", 30, 160);
     
@@ -999,7 +1018,7 @@ void SleepLightStart() {
 
     delay(1000);
   }
-  while ( SendDataSimpleAPI() == false || i < 5);
+  while ( SendDataSimpleAPI() == false && i < 5);
 
 
   tft.fillScreen(TFT_BLACK);
