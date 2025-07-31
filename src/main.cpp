@@ -8,7 +8,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.59";
+const char VERSION[] = "0.60";
 #define DISPLAY_POWER_PIN 22
 #define CAN_INTERRUPT 27
 #define CAN_CS 33
@@ -118,6 +118,7 @@ void DisplayMainUI();
 void DisplayTripResults();
 void DisplayCharging();
 void DisplayChargingResult();
+void ConnectWIFIAndSendData();
 bool SendDataSimpleAPI();
 void SerialPrintValues();
 void TripRecording();
@@ -261,13 +262,7 @@ void loop() {
     // Show Trip results
     DisplayTripResults();
     //Send Data while showing Results
-    SendDataLastRun = currentMillis;
-    if (WIFICheckConnection()) {
-      if (SendDataSimpleAPI()) { DataToSend = false; }
-    }
-    else if (WIFIConnect()) {
-      if (SendDataSimpleAPI()) { DataToSend = false; }
-    }
+    ConnectWIFIAndSendData();
     
     delay(20000); // Show Trip results for 15 seconds
     tft.fillScreen(COLOR_BACKGROUND);
@@ -288,6 +283,7 @@ void loop() {
 
     // Show Charge end screen
     DisplayChargingResult();
+    ConnectWIFIAndSendData();
     delay(60000);
     tft.fillScreen(COLOR_BACKGROUND);
   }
@@ -303,12 +299,7 @@ void loop() {
   if (DataToSend && (currentMillis - SendDataLastRun >= SendDataInterval) && (canValues.Speed < 1 && canValues.Handbrake)) //send in interval if ignition is off
   {
     SendDataLastRun = currentMillis;
-    if (WIFICheckConnection()) {
-      if (SendDataSimpleAPI()) { DataToSend = false; }
-    }
-    else if (WIFIConnect()) {
-        if (SendDataSimpleAPI()) { DataToSend = false; }
-      }
+    ConnectWIFIAndSendData();
   }
   else if (canValues.Speed > 1 && WiFi.status() != WL_NO_SHIELD)  { // deactivate tranismitting when driving
     #ifdef DEBUG
@@ -809,7 +800,7 @@ void DisplayTripResults() {
   tft.fillSmoothRoundRect(positionX, positionY, 190, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
   tft.setTextColor(COLOR_TOPOLINO);
   tft.setTextSize(1);
-  tft.drawString("kW/h", positionX +10 , positionY +0, 2);
+  tft.drawString("kWh", positionX +10 , positionY +0, 2);
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(2);
   tft.drawString("  " + String(drivenSoC * 0.06, 1) + "  | " + String((drivenSoC * 0.06) / drivenKM,1), positionX +10, positionY +19);
@@ -824,7 +815,7 @@ void DisplayTripResults() {
   tft.drawString(String(drivenSoC * -1) + "%", 132, positionY +13);
 }
 
-//TODO: Refresh verbessern (nur arc neu zeuzeichen, Text it background)
+//TEST: Refresh verbessern (nur arc neu zeuzeichen, Text it background)
 void DisplayCharging() {
   //tft.fillScreen(COLOR_BACKGROUND);
 
@@ -881,6 +872,15 @@ void DisplayChargingResult() {
   tft.drawSmoothArc(120, 120, 121, 105, 0, map(thisCharge.endSoC, 0, 100, 1, 360), COLOR_TOPOLINO, COLOR_BACKGROUND, true);
 }
 
+void ConnectWIFIAndSendData() {
+  if (WIFICheckConnection()) {
+    if (SendDataSimpleAPI()) { DataToSend = false; }
+  }
+  else if (WIFIConnect()) {
+    if (SendDataSimpleAPI()) { DataToSend = false; }
+  }
+  }
+
 bool SendDataSimpleAPI() {
   Serial.println("Send Data via REST");
   StatusIndicatorTx = TFT_BLUE;
@@ -913,7 +913,7 @@ bool SendDataSimpleAPI() {
   http.setUserAgent("TopolinoInfoDisplay/1.0");
   int httpResponseCode = http.GET();
 
-  if (httpResponseCode == 200) {
+  if (httpResponseCode >= 200 && httpResponseCode <= 299) {
     StatusIndicatorTx = TFT_GREEN;
     result = true;
 
