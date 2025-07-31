@@ -815,7 +815,7 @@ void DisplayTripResults() {
   tft.drawString(String(drivenSoC * -1) + "%", 132, positionY +13);
 }
 
-//TEST: Refresh verbessern (nur arc neu zeuzeichen, Text it background)
+//TEST: Refresh verbessern (nur arc neu zeuzeichen, Text mit background, Akku Tempersatur anzeige)
 void DisplayCharging() {
   //tft.fillScreen(COLOR_BACKGROUND);
 
@@ -837,6 +837,11 @@ void DisplayCharging() {
   tft.setTextColor(COLOR_TOPOLINO, COLOR_BACKGROUND, true);
   tft.drawString(String((millis() - thisCharge.startTime) / 1000 / 60) + " Min.", 60, 170);
   
+  // Temperatur Akku
+  tft.setTextSize(2);
+  tft.setTextColor(COLOR_GREY, COLOR_BACKGROUND, true);
+  tft.drawString(String((float)(canValues.Temp1 + canValues.Temp2) / 2, 1) + " C", 70, 195);
+
   // Animation
   tft.drawSmoothArc(120, 120, 121, 105, 0, 360, COLOR_BACKGROUND, COLOR_BACKGROUND);
   int arcLenght = 45;
@@ -867,7 +872,12 @@ void DisplayChargingResult() {
   tft.setTextSize(3);
   tft.setTextColor(COLOR_TOPOLINO);
   tft.drawString(String((thisCharge.endTime - thisCharge.startTime) / 1000 / 60) + " Min.", 60, 170);
-  
+  // Temperatur Akku
+  tft.setTextSize(2);
+  tft.setTextColor(COLOR_GREY, COLOR_BACKGROUND, true);
+  tft.drawString(String((float)(canValues.Temp1 + canValues.Temp2) / 2, 1) + " C", 70, 195);
+
+
   // Charge
   tft.drawSmoothArc(120, 120, 121, 105, 0, map(thisCharge.endSoC, 0, 100, 1, 360), COLOR_TOPOLINO, COLOR_BACKGROUND, true);
 }
