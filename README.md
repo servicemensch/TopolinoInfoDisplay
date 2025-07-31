@@ -41,7 +41,7 @@ Standard:
 - SPI
 
 Additional:
-- [TFT_sSPI](https://doc-tft-espi.readthedocs.io/) - ⚠ Take care to select the right display un User_Setup_Select.h
+- [TFT_sSPI](https://doc-tft-espi.readthedocs.io/) - ⚠ Take care to select the right display un User_Setup.h
 - [ACAN2515](https://github.com/pierremolinaro/acan2515/tree/master)
 
 ## Configuration

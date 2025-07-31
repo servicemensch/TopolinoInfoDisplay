@@ -8,7 +8,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.60";
+const char VERSION[] = "0.61";
 #define DISPLAY_POWER_PIN 22
 #define CAN_INTERRUPT 27
 #define CAN_CS 33
