@@ -1,11 +1,11 @@
 #include <Arduino.h>
-#include <TFT_eSPI.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <ACAN2515.h>
 #include <spi.h>
 #include <ArduinoOTA.h>
+#include <TFT_eSPI.h>
 #include <UrlEncode.h>
+#include <ACAN2515.h>
 
 //#define DEBUG
 
@@ -776,6 +776,7 @@ void DisplayTripResults() {
   tft.drawString("Diese Fahrt:",50, 23, 2);
   int positionX = 25;
   int positionY = 55;
+  // Dauer: Min / KM
   tft.fillSmoothRoundRect(positionX, positionY, 190, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
   tft.setTextColor(COLOR_TOPOLINO);
   tft.setTextSize(1);
@@ -788,6 +789,7 @@ void DisplayTripResults() {
   else {
     tft.drawString(" " + String(drivenMin) + " Min | " + String(drivenKM, 1) + "km", positionX +10, positionY +19);
   }
+  // Geschiwndigkeit: Durchschnitt / Max
   positionY += 43;
   tft.fillSmoothRoundRect(positionX, positionY, 190, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
   tft.setTextColor(COLOR_TOPOLINO);
@@ -799,6 +801,7 @@ void DisplayTripResults() {
   tft.drawSmoothCircle(positionX +75, positionY +25, 7, TFT_WHITE, COLOR_BACKGROUND);
   tft.drawLine(positionX +67, positionY +32, positionX +83, positionY +18, TFT_WHITE);
   tft.fillTriangle(positionX +155, positionY +33, positionX +175, positionY +33, positionX +175, positionY +22, TFT_WHITE);
+  // Energieverbrauch: Gesammt / je 100 km
   positionY += 43;
   tft.fillSmoothRoundRect(positionX, positionY, 190, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
   tft.setTextColor(COLOR_TOPOLINO);
@@ -806,9 +809,10 @@ void DisplayTripResults() {
   tft.drawString("kWh", positionX +10 , positionY +0, 2);
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(2);
-  tft.drawString("  " + String(drivenSoC * 0.06, 1) + "  | " + String((drivenSoC * 0.06) / drivenKM,1), positionX +10, positionY +19);
+  tft.drawString("  " + String(drivenSoC * 0.06, 1) + "  | " + String((drivenSoC * 0.06) / drivenKM * 100,1), positionX +10, positionY +19);
   tft.drawSmoothCircle(positionX +170, positionY +25, 7, TFT_WHITE, COLOR_BACKGROUND);
   tft.drawLine(positionX +162, positionY +33, positionX +178, positionY +18, TFT_WHITE);
+  // Akkuverbrauch
   positionY += 43;
   tft.fillSmoothRoundRect(65, positionY, 110, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
   tft.setTextSize(2);

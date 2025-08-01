@@ -24,7 +24,7 @@ Shows some details of the electronic system of the car, send it to a central (ho
 - [1,28" TFT round GC9A01](https://amzn.eu/d/7S9U4s6)
 - [MCP 2515 Can Bus module](https://www.az-delivery.de/products/mcp2515-can-bus-modul-1)
 - 3D printed OBD2 plug
-- 3D printed housing
+- [3D printed housing](https://makerworld.com/en/models/1659904-topolino-info-display-case#profileId-1755776)
 
 ### Wireing (Version 2):
 ![v2 wireing diagram](info/hardware/v2-1.28_round_TFT/HWv2_wireing.png)
@@ -39,10 +39,12 @@ Standard:
 - WIFI
 - HTTPCLient
 - SPI
+- ArduinoOTA
 
 Additional:
-- [TFT_sSPI](https://doc-tft-espi.readthedocs.io/) - ⚠ Take care to select the right display un User_Setup.h
-- [ACAN2515](https://github.com/pierremolinaro/acan2515/tree/master)
+- [TFT_sSPI](https://github.com/Bodmer/TFT_eSPI)
+- [ACAN2515](https://github.com/pierremolinaro/acan2515/)
+- [urlencode](https://github.com/plageoj/urlencode)
 
 ## Configuration
 Rename ./config/config_example.h to config.h and fill the values
