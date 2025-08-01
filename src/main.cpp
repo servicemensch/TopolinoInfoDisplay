@@ -5,10 +5,11 @@
 #include <ACAN2515.h>
 #include <spi.h>
 #include <ArduinoOTA.h>
+#include <UrlEncode.h>
 
 //#define DEBUG
 
-const char VERSION[] = "0.65";
+const char VERSION[] = "0.66";
 #define DISPLAY_POWER_PIN 22
 #define CAN_INTERRUPT 27
 #define CAN_CS 33
@@ -961,7 +962,7 @@ void SendRemoteLogSimpleAPI(String message) {
   // SimpleAPI set values bulk
   String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/set/0_userdata.0.topolino.LastLogEntry?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
   String DataURLEncoded = "&value=";
-  DataURLEncoded += message;
+  DataURLEncoded += urlEncode(message);
   DataURLEncoded += "&ack=true";
   Serial.print("Data: ");
   Serial.println(URL + DataURLEncoded); 
