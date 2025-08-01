@@ -8,7 +8,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.61";
+const char VERSION[] = "0.65";
 #define DISPLAY_POWER_PIN 22
 #define CAN_INTERRUPT 27
 #define CAN_CS 33
@@ -61,7 +61,7 @@ struct CANValues {
   float Current = 0;
   bool CurrentUp = false;
   int Handbrake = -1; // 1=On, 0=Off, -1=Unknown
-  bool HandbreakeUp = false;
+  bool HandbrakeUp = false;
 };
 struct Charge {
   unsigned long startTime = 0;
@@ -120,6 +120,7 @@ void DisplayCharging();
 void DisplayChargingResult();
 void ConnectWIFIAndSendData();
 bool SendDataSimpleAPI();
+void SendRemoteLogSimpleAPI(String message);
 void SerialPrintValues();
 void TripRecording();
 void SleepLightStart();
@@ -171,6 +172,7 @@ void setup() {
   ArduinoOTA.setHostname("TopolinoInfoDisplayOTA");
   ArduinoOTA.begin();
   
+  SendRemoteLogSimpleAPI("TopolinoInfoDisplay started - Version: " + String(VERSION));
 
   digitalWrite(ONBOARD_LED, LOW);
 
@@ -202,7 +204,7 @@ void loop() {
     KeepAliveLastRun = currentMillis;
     digitalWrite(ONBOARD_LED, !digitalRead(ONBOARD_LED));
     if (StatusIndicatorStatus == TFT_WHITE) {
-      if (TripActive) { StatusIndicatorStatus = TFT_BLUE; }
+      if (TripActive) { StatusIndicatorStatus = TFT_DARKCYAN; }
       else { StatusIndicatorStatus = TFT_GREEN; }
     }
     else {StatusIndicatorStatus = TFT_WHITE;}
@@ -550,7 +552,7 @@ void CANCheckMessage(){
             canValues.Handbrake = -1;
             }
           }
-          canValues.HandbreakeUp = true;
+          canValues.HandbrakeUp = true;
           //Serial.println("- CAN Value Brake: " + String(canMsg.data[0], HEX));
 
           break;
@@ -720,7 +722,7 @@ void DisplayMainUI() {
   tft.setTextSize(2);
   if (canValues.SoC < 15) { tft.setTextColor(TFT_RED); }
   else if (canValues.SoC < 30) { tft.setTextColor(TFT_YELLOW); }
-  else if (canValues.SoC > 90) { tft.setTextColor(TFT_BLUE); }
+  else if (canValues.SoC > 90) { tft.setTextColor(TFT_DARKCYAN); }
   else { tft.setTextColor(COLOR_GREY); }
   tft.fillRect(104, 39, 50, 20, COLOR_BACKGROUND); // Reset text background
   tft.drawString(String(canValues.SoC) + "%", 105, 40);
@@ -815,7 +817,6 @@ void DisplayTripResults() {
   tft.drawString(String(drivenSoC * -1) + "%", 132, positionY +13);
 }
 
-
 void DisplayCharging() {
   //tft.fillScreen(COLOR_BACKGROUND);
 
@@ -889,7 +890,7 @@ void ConnectWIFIAndSendData() {
   else if (WIFIConnect()) {
     if (SendDataSimpleAPI()) { DataToSend = false; }
   }
-  }
+}
 
 bool SendDataSimpleAPI() {
   Serial.println("Send Data via REST");
@@ -907,7 +908,7 @@ bool SendDataSimpleAPI() {
   if (canValues.Temp1Up) { DataURLEncoded += "&0_userdata.0.topolino.BattTemp1=" + String(canValues.Temp1); }
   if (canValues.Temp2Up) { DataURLEncoded += "&0_userdata.0.topolino.BattTemp2=" + String(canValues.Temp2); }
   if (canValues.VoltUp) { DataURLEncoded += "&0_userdata.0.topolino.BattV=" + String(canValues.Volt); }
-  if (canValues.HandbreakeUp) { DataURLEncoded += "&0_userdata.0.topolino.Handbrake=" + String(canValues.Handbrake); }
+  if (canValues.HandbrakeUp) { DataURLEncoded += "&0_userdata.0.topolino.Handbrake=" + String(canValues.Handbrake); }
   if (canValues.ODOUp) { DataURLEncoded += "&0_userdata.0.topolino.ODO=" + String(canValues.ODO / 10); }
   if (canValues.OBCRemainingMinutesUp) { DataURLEncoded += "&0_userdata.0.topolino.OnBoardChargerRemaining=" + String(canValues.OBCRemainingMinutes); }
   if (canValues.ReadyUp) { DataURLEncoded += "&0_userdata.0.topolino.Ready=" + String(canValues.Ready); }
@@ -922,6 +923,8 @@ bool SendDataSimpleAPI() {
   http.setTimeout(3 * 1000); // 3 seconds timeout
   http.setUserAgent("TopolinoInfoDisplay/1.0");
   int httpResponseCode = http.GET();
+  Serial.print("HTTP Response Code: ");
+  Serial.println(httpResponseCode);
 
   if (httpResponseCode >= 200 && httpResponseCode <= 299) {
     StatusIndicatorTx = TFT_GREEN;
@@ -933,7 +936,7 @@ bool SendDataSimpleAPI() {
     canValues.Temp1Up = false;
     canValues.Temp2Up = false;
     canValues.VoltUp = false;
-    canValues.HandbreakeUp = false;
+    canValues.HandbrakeUp = false;
     canValues.ODOUp = false;
     canValues.OBCRemainingMinutesUp = false;
     canValues.ReadyUp = false;
@@ -949,6 +952,26 @@ bool SendDataSimpleAPI() {
 
   http.end();
   return result; 
+}
+
+// TODO: does not work
+void SendRemoteLogSimpleAPI(String message) {
+  Serial.println("Send Remote Log:");
+  HTTPClient http;
+  // SimpleAPI set values bulk
+  String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/set/0_userdata.0.topolino.LastLogEntry?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
+  String DataURLEncoded = "&value=";
+  DataURLEncoded += message;
+  DataURLEncoded += "&ack=true";
+  Serial.print("Data: ");
+  Serial.println(URL + DataURLEncoded); 
+  http.begin(URL + DataURLEncoded);
+  http.setTimeout(1 * 1000); // 1 second timeout
+  http.setUserAgent("TopolinoInfoDisplay/1.0");
+  int httpResponseCode = http.GET();
+  Serial.print("HTTP Response Code: ");
+  Serial.println(httpResponseCode);
+  http.end();
 }
 
 void SerialPrintValues() {
