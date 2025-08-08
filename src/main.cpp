@@ -9,7 +9,9 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.66";
+const char VERSION[] = "0.67";
+#define ShowConsumptionAsKW true
+
 #define DISPLAY_POWER_PIN 22
 #define CAN_INTERRUPT 27
 #define CAN_CS 33
@@ -122,6 +124,8 @@ void DisplayChargingResult();
 void ConnectWIFIAndSendData();
 bool SendDataSimpleAPI();
 void SendRemoteLogSimpleAPI(String message);
+void SendChargeInfoSimpleAPI();
+void SendTripInfosSimpleAPI();
 void SerialPrintValues();
 void TripRecording();
 void SleepLightStart();
@@ -253,14 +257,8 @@ void loop() {
   }
 
   // Check current Trip has ended
-  if ((canValues.Ready == 0 || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0) ) && TripActive) {
+  if (canValues.Ready == 0 && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
     TripActive = false;
-    
-    Serial.println("Trip Duration: " + String((Trip.endTime - Trip.startTime) / 1000 / 60) + " minutes");
-    Serial.println("Trip Distance: " + String(Trip.endKM - Trip.startKM / 10, 1) + " km");
-    Serial.println("Trip Max Speed: " + String(Trip.maxSpeed) + " km/h");
-    Serial.println("Trip average Speed: " + String((float)(Trip.endKM - Trip.startKM) / ((Trip.endTime - Trip.startTime) / 1000 / 60)) + " km/h");
-    Serial.println("Trip average Energy: " + String((float)(Trip.startSoC - Trip.endSoC) * 0,056 ) + " kWh");
     
     // Show Trip results
     DisplayTripResults();
@@ -303,6 +301,7 @@ void loop() {
   {
     SendDataLastRun = currentMillis;
     ConnectWIFIAndSendData();
+    if (IsCharging) { SendChargeInfoSimpleAPI();}
   }
   else if (canValues.Speed > 1 && WiFi.status() != WL_NO_SHIELD)  { // deactivate tranismitting when driving
     #ifdef DEBUG
@@ -391,7 +390,12 @@ void CANCheckMessage(){
 
     if (!canMsg.rtr) {
       CanMessagesProcessed++;
-      IsSleeping = false;
+      
+      if (IsSleeping) {
+        IsSleeping = false;
+        tft.fillScreen(COLOR_BACKGROUND);
+      }
+      
       switch (canMsg.id) {
         // Electronic control Unit (ECU)
         case 0x581: { 
@@ -649,38 +653,50 @@ void DisplayMainUI() {
   tft.drawSmoothArc(120, 120, 121, 105, 120, 240, TFT_DARKGREY, COLOR_BACKGROUND, true);
 
   //Consumption Arc
-  if (canValues.Current < 0) {
-    //Consumption negative
+  if (canValues.Current < -2) {
+    //Consumption negative = driving
     int arcLenght = map(canValues.Current, -150, 0, 240, 150);
     if (arcLenght > 240) {arcLenght = 240;}
     if (arcLenght < 151) {arcLenght = 151;}
     if (canValues.Current < -75) {valuecolor = TFT_RED;} else {valuecolor = TFT_YELLOW;}
     tft.drawSmoothArc(120,120, 120, 105, 150, arcLenght, valuecolor, COLOR_BACKGROUND, true);
   }
-  else if (canValues.Current > 0) {
-    //Consumption positive
+  else if (canValues.Current >02) {
+    //Consumption positive  = charging
     int arcLenght = map(canValues.Current, 0, 75, 0, 30);
     if (arcLenght > 30) {arcLenght = 30;}
     if (arcLenght < 1) {arcLenght = 1;}
     tft.drawSmoothArc(120,120, 120, 105, 150 - arcLenght, 150, TFT_GREEN, COLOR_BACKGROUND, true);
   }
   else {
-    // No Consumption
+    // No Consumption (Dead zone 0 bis -2)
     tft.drawSmoothArc(120,120, 118, 107, 149, 150, TFT_BLUE, COLOR_BACKGROUND, true);
-
   }
   
   // Consumption value  
   tft.setTextColor(TFT_WHITE, COLOR_ALMOSTBLACK, true);
   tft.setTextSize(3);
-  int textstart = 55;
-  if (canValues.Current >=10) { textstart = 95;}
-  else if (canValues.Current >= 0) { textstart = 110;}
-  else if (canValues.Current < -100 ) { textstart = 60;}
-  else if (canValues.Current < -10) { textstart = 75;}
-  else if (canValues.Current < 0) { textstart = 95;}
+  String consumptionString;
+  int textstart;
+  float currentConsumption = 0;
+  if (ShowConsumptionAsKW) {
+    textstart = 75;                                           // #.##
+    currentConsumption = canValues.Current / canValues.Volt;
+    if (currentConsumption <0) { textstart = 60;}             // -#.##
+    consumptionString = String(currentConsumption, 2) + "kW";
+  }
+  else {
+    currentConsumption = canValues.Current;
+    textstart = 110;                  // #.#                  
+    if (currentConsumption >=10) { textstart = 95;}           // ##.#
+    else if (currentConsumption >= 0) { textstart = 110;}     // #.#
+    else if (currentConsumption < -100 ) { textstart = 60;}   // -###.#
+    else if (currentConsumption < -10) { textstart = 75;}     // -##.#
+    else if (currentConsumption < 0) { textstart = 95;}       // -#.#
+    consumptionString = String(currentConsumption, 1) + "A";
+  }
   tft.fillSmoothRoundRect(40, 65, 160, 60, 10, COLOR_ALMOSTBLACK, COLOR_BACKGROUND); // Reset backgroubnd
-  tft.drawString(String(canValues.Current,1) + "A", textstart, 85);
+  tft.drawString(consumptionString, textstart, 85);
 
   // Battery Temperature
   float tempAverage = (canValues.Temp1 + canValues.Temp2) / 2.0;
@@ -754,18 +770,6 @@ void DisplayMainUI() {
 }
 
 void DisplayTripResults() {
-  /*
-  tft.fillRect(0, 21, DISPLAY_WIDTH, 121, TFT_BLACK);
-  tft.setTextColor(TFT_WHITE);
-  tft.setTextSize(3);
-  tft.drawString("Diese Fahrt:", 5, 25);
-  tft.setTextSize(2);
-  tft.drawString("Dauer: " + String((Trip.endTime - Trip.startTime) / 1000 / 60) + " min. / " + String((Trip.endKM - Trip.startKM) / 10, 1) + " km", 5, 55);
-  tft.drawString("km/h:  " + String(Trip.maxSpeed, 0) + " max / " + String((float)Trip.speedBuffer / Trip.records,1) + " avg.", 5, 75);
-  tft.drawString("kWh:   " + String(Trip.energyConsumed / 100000, 2) + " / " + String((float)(Trip.energyBuffer / Trip.records) / 1000) + " avg.", 5, 95);
-  tft.drawString("Akku:  " + String((Trip.startSoC - Trip.endSoC) * -1) + "% -> (" + String((Trip.startSoC - Trip.endSoC) * 0.06, 2) + " kwh)" , 5, 115);
-  */
-
   float drivenKM = (Trip.endKM - Trip.startKM) / 10;
   int drivenMin = (Trip.endTime - Trip.startTime) / 1000 / 60;
   int drivenSoC = Trip.startSoC - Trip.endSoC;
@@ -820,7 +824,10 @@ void DisplayTripResults() {
   tft.drawString("Akku:", 72, positionY +13);
   tft.setTextColor(TFT_WHITE);
   tft.drawString(String(drivenSoC * -1) + "%", 132, positionY +13);
-}
+
+  if (WIFICheckConnection()) { SendTripInfosSimpleAPI();}
+  else if (WIFIConnect()) { SendTripInfosSimpleAPI();}
+  }
 
 void DisplayCharging() {
   //tft.fillScreen(COLOR_BACKGROUND);
@@ -913,7 +920,7 @@ bool SendDataSimpleAPI() {
   if (canValues.Temp1Up) { DataURLEncoded += "&0_userdata.0.topolino.BattTemp1=" + String(canValues.Temp1); }
   if (canValues.Temp2Up) { DataURLEncoded += "&0_userdata.0.topolino.BattTemp2=" + String(canValues.Temp2); }
   if (canValues.VoltUp) { DataURLEncoded += "&0_userdata.0.topolino.BattV=" + String(canValues.Volt); }
-  if (canValues.HandbrakeUp) { DataURLEncoded += "&0_userdata.0.topolino.Handbrake=" + String(canValues.Handbrake); }
+  if (canValues.HandbrakeUp) { DataURLEncoded += "&0_userdata.0.topolino.Handbreake=" + String(canValues.Handbrake); }
   if (canValues.ODOUp) { DataURLEncoded += "&0_userdata.0.topolino.ODO=" + String(canValues.ODO / 10); }
   if (canValues.OBCRemainingMinutesUp) { DataURLEncoded += "&0_userdata.0.topolino.OnBoardChargerRemaining=" + String(canValues.OBCRemainingMinutes); }
   if (canValues.ReadyUp) { DataURLEncoded += "&0_userdata.0.topolino.Ready=" + String(canValues.Ready); }
@@ -956,6 +963,7 @@ bool SendDataSimpleAPI() {
   }
 
   http.end();
+  SendRemoteLogSimpleAPI("SendDataSimpleAPI");
   return result; 
 }
 
@@ -977,6 +985,52 @@ void SendRemoteLogSimpleAPI(String message) {
   Serial.print("HTTP Response Code: ");
   Serial.println(httpResponseCode);
   http.end();
+}
+
+// TODO: Testting
+void SendChargeInfoSimpleAPI() {
+  Serial.println("Send Charge Info Log:");
+  HTTPClient http;
+  // SimpleAPI set values bulk
+  String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
+  String DataURLEncoded = "";
+  DataURLEncoded += "&0_userdata.0.topolino.charge.dauer=" + String((float)(thisCharge.endTime - thisCharge.startTime) / 1000 / 60, 0);
+  DataURLEncoded += "&0_userdata.0.topolino.charge.ladung=" + String((thisCharge.endSoC - thisCharge.startSoC) * 0.06, 1);
+  DataURLEncoded += "&ack=true";
+  Serial.print("Data: ");
+  Serial.println(URL + DataURLEncoded); 
+  http.begin(URL + DataURLEncoded);
+  http.setTimeout(1 * 3000); // 1 second timeout
+  http.setUserAgent("TopolinoInfoDisplay/1.0");
+  int httpResponseCode = http.GET();
+  Serial.print("HTTP Response Code: ");
+  Serial.println(httpResponseCode);
+  http.end();
+  SendRemoteLogSimpleAPI("SendChargeInfosSimpleAPI");
+}
+
+//TODO: Testing
+void SendTripInfosSimpleAPI() {
+  Serial.println("Send Charge Info Log:");
+  HTTPClient http;
+  // SimpleAPI set values bulk
+  String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
+  String DataURLEncoded = "";
+  DataURLEncoded += "&0_userdata.0.topolino.trip.consumption=" + String((float)(Trip.endSoC - Trip.startSoC) * 0.06, 1);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.dauer=" + String((float)(Trip.endTime - Trip.startTime) / 1000 / 60, 0);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.km=" + String((Trip.endKM - Trip.startKM) / 10, 1);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.maxSpeed=" + String(Trip.maxSpeed, 0);
+  DataURLEncoded += "&ack=true";
+  Serial.print("Data: ");
+  Serial.println(URL + DataURLEncoded); 
+  http.begin(URL + DataURLEncoded);
+  http.setTimeout(1 * 3000); // 1 second timeout
+  http.setUserAgent("TopolinoInfoDisplay/1.0");
+  int httpResponseCode = http.GET();
+  Serial.print("HTTP Response Code: ");
+  Serial.println(httpResponseCode);
+  http.end();
+  SendRemoteLogSimpleAPI("SendTripInfosSimpleAPI");
 }
 
 void SerialPrintValues() {
@@ -1076,6 +1130,7 @@ void SleepLightStart() {
   tft.setTextSize(1);
   tft.drawString("Tx", 135, 222);
   
+  SendRemoteLogSimpleAPI(" Light Sleep");
 }
 
 void SleepDeepStart() {
