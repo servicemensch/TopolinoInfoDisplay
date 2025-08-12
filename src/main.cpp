@@ -9,7 +9,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.67";
+const char VERSION[] = "0.70";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -98,11 +98,13 @@ int CanError = 0;
 unsigned long CanMessagesProcessed = 0;
 unsigned long CanMessagesLastRecived = 0;
 float Value_Battery_Current_Buffer = 0;
-trip Trip; // Trip data structure
+trip thisTrip; // Trip data structure
 CANValues canValues; // CAN values structure
 Charge thisCharge;
 bool TripActive = false;
 bool DataToSend = false;
+bool TripDataToSend = false;
+bool ChargeDataToSend = false;
 unsigned long StatusIndicatorStatus = TFT_DARKGREY;
 unsigned long StatusIndicatorCAN = TFT_DARKGREY;
 unsigned long StatusIndicatorWIFI = TFT_DARKGREY;
@@ -124,8 +126,8 @@ void DisplayChargingResult();
 void ConnectWIFIAndSendData();
 bool SendDataSimpleAPI();
 void SendRemoteLogSimpleAPI(String message);
-void SendChargeInfoSimpleAPI();
-void SendTripInfosSimpleAPI();
+bool SendChargeInfoSimpleAPI();
+bool SendTripInfosSimpleAPI();
 void SerialPrintValues();
 void TripRecording();
 void SleepLightStart();
@@ -241,15 +243,15 @@ void loop() {
   // Check for new trip recording
   if (canValues.Ready == 1 && canValues.Speed > 0 && !TripActive) {
     TripActive = true;
-    Serial.println("Trip started at " + String(Trip.startTime) + " with ODO: " + String(Trip.startKM));
+    Serial.println("Trip started at " + String(thisTrip.startTime) + " with ODO: " + String(thisTrip.startKM));
     // Reset Trip data
-    Trip.startTime = 0;
-    Trip.endTime = 0;
-    Trip.startKM = 0;
-    Trip.endKM = 0;
-    Trip.maxSpeed = 0;
-    Trip.startSoC = canValues.SoC;
-    Trip.endSoC = canValues.SoC;
+    thisTrip.startTime = 0;
+    thisTrip.endTime = 0;
+    thisTrip.startKM = 0;
+    thisTrip.endKM = 0;
+    thisTrip.maxSpeed = 0;
+    thisTrip.startSoC = canValues.SoC;
+    thisTrip.endSoC = canValues.SoC;
   } 
   if (currentMillis - TripRecordingLastRun >= TripRecordInterval && TripActive) {
     TripRecordingLastRun = currentMillis;
@@ -259,6 +261,7 @@ void loop() {
   // Check current Trip has ended
   if (canValues.Ready == 0 && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
     TripActive = false;
+    TripDataToSend = true;
     
     // Show Trip results
     DisplayTripResults();
@@ -277,10 +280,12 @@ void loop() {
     thisCharge.startTime = currentMillis;
     tft.fillScreen(COLOR_BACKGROUND);
   }
+  // Chekc if chargeing has ended
   if (IsCharging && canValues.OBCRemainingMinutes == -1) {
     IsCharging = false;
     thisCharge.endSoC = canValues.SoC;
     thisCharge.endTime = currentMillis;
+    ChargeDataToSend = true;
 
     // Show Charge end screen
     DisplayChargingResult();
@@ -301,7 +306,6 @@ void loop() {
   {
     SendDataLastRun = currentMillis;
     ConnectWIFIAndSendData();
-    if (IsCharging) { SendChargeInfoSimpleAPI();}
   }
   else if (canValues.Speed > 1 && WiFi.status() != WL_NO_SHIELD)  { // deactivate tranismitting when driving
     #ifdef DEBUG
@@ -681,7 +685,7 @@ void DisplayMainUI() {
   float currentConsumption = 0;
   if (ShowConsumptionAsKW) {
     textstart = 75;                                           // #.##
-    currentConsumption = canValues.Current / canValues.Volt;
+    currentConsumption = (float)canValues.Current * canValues.Volt / 1000;
     if (currentConsumption <0) { textstart = 60;}             // -#.##
     consumptionString = String(currentConsumption, 2) + "kW";
   }
@@ -770,9 +774,9 @@ void DisplayMainUI() {
 }
 
 void DisplayTripResults() {
-  float drivenKM = (Trip.endKM - Trip.startKM) / 10;
-  int drivenMin = (Trip.endTime - Trip.startTime) / 1000 / 60;
-  int drivenSoC = Trip.startSoC - Trip.endSoC;
+  float drivenKM = (thisTrip.endKM - thisTrip.startKM) / 10;
+  int drivenMin = (thisTrip.endTime - thisTrip.startTime) / 1000 / 60;
+  int drivenSoC = thisTrip.startSoC - thisTrip.endSoC;
 
   tft.fillScreen(COLOR_BACKGROUND);
   tft.setTextColor(COLOR_TOPOLINO);
@@ -801,7 +805,7 @@ void DisplayTripResults() {
   tft.drawString("km/h", positionX +10 , positionY +1, 2);
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(2);
-  tft.drawString(String((drivenKM / drivenMin) * 60, 1) + "   | " + String(Trip.maxSpeed, 0), positionX +10, positionY +19);
+  tft.drawString(String((drivenKM / drivenMin) * 60, 1) + "   | " + String(thisTrip.maxSpeed, 0), positionX +10, positionY +19);
   tft.drawSmoothCircle(positionX +75, positionY +25, 7, TFT_WHITE, COLOR_BACKGROUND);
   tft.drawLine(positionX +67, positionY +32, positionX +83, positionY +18, TFT_WHITE);
   tft.fillTriangle(positionX +155, positionY +33, positionX +175, positionY +33, positionX +175, positionY +22, TFT_WHITE);
@@ -814,8 +818,8 @@ void DisplayTripResults() {
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(2);
   tft.drawString("  " + String(drivenSoC * 0.06, 1) + "  | " + String((drivenSoC * 0.06) / drivenKM * 100,1), positionX +10, positionY +19);
-  tft.drawSmoothCircle(positionX +170, positionY +25, 7, TFT_WHITE, COLOR_BACKGROUND);
-  tft.drawLine(positionX +162, positionY +33, positionX +178, positionY +18, TFT_WHITE);
+  tft.drawSmoothCircle(positionX +175, positionY +25, 7, TFT_WHITE, COLOR_BACKGROUND);
+  tft.drawLine(positionX +167, positionY +33, positionX +183, positionY +18, TFT_WHITE);
   // Akkuverbrauch
   positionY += 43;
   tft.fillSmoothRoundRect(65, positionY, 110, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
@@ -825,8 +829,6 @@ void DisplayTripResults() {
   tft.setTextColor(TFT_WHITE);
   tft.drawString(String(drivenSoC * -1) + "%", 132, positionY +13);
 
-  if (WIFICheckConnection()) { SendTripInfosSimpleAPI();}
-  else if (WIFIConnect()) { SendTripInfosSimpleAPI();}
   }
 
 void DisplayCharging() {
@@ -897,10 +899,14 @@ void DisplayChargingResult() {
 
 void ConnectWIFIAndSendData() {
   if (WIFICheckConnection()) {
-    if (SendDataSimpleAPI()) { DataToSend = false; }
+    if (DataToSend) { if (SendDataSimpleAPI()) { DataToSend = false; } }
+    if (TripDataToSend) { if (SendTripInfosSimpleAPI()) { TripDataToSend = false; }}
+    if (ChargeDataToSend) { if ( SendChargeInfoSimpleAPI()) { ChargeDataToSend = false; } }   
   }
   else if (WIFIConnect()) {
-    if (SendDataSimpleAPI()) { DataToSend = false; }
+    if (DataToSend) { if (SendDataSimpleAPI()) { DataToSend = false; } }
+    if (TripDataToSend) { if (SendTripInfosSimpleAPI()) { TripDataToSend = false; }}
+    if (ChargeDataToSend) { if ( SendChargeInfoSimpleAPI()) { ChargeDataToSend = false; } }   
   }
 }
 
@@ -967,7 +973,6 @@ bool SendDataSimpleAPI() {
   return result; 
 }
 
-// TODO: does not work
 void SendRemoteLogSimpleAPI(String message) {
   Serial.println("Send Remote Log:");
   HTTPClient http;
@@ -988,7 +993,7 @@ void SendRemoteLogSimpleAPI(String message) {
 }
 
 // TODO: Testting
-void SendChargeInfoSimpleAPI() {
+bool SendChargeInfoSimpleAPI() {
   Serial.println("Send Charge Info Log:");
   HTTPClient http;
   // SimpleAPI set values bulk
@@ -996,6 +1001,8 @@ void SendChargeInfoSimpleAPI() {
   String DataURLEncoded = "";
   DataURLEncoded += "&0_userdata.0.topolino.charge.dauer=" + String((float)(thisCharge.endTime - thisCharge.startTime) / 1000 / 60, 0);
   DataURLEncoded += "&0_userdata.0.topolino.charge.ladung=" + String((thisCharge.endSoC - thisCharge.startSoC) * 0.06, 1);
+  DataURLEncoded += "&0_userdata.0.topolino.charge.startSoC=" + String(thisCharge.startSoC);
+  DataURLEncoded += "&0_userdata.0.topolino.charge.endSoC=" + String(thisCharge.endSoC);
   DataURLEncoded += "&ack=true";
   Serial.print("Data: ");
   Serial.println(URL + DataURLEncoded); 
@@ -1005,21 +1012,36 @@ void SendChargeInfoSimpleAPI() {
   int httpResponseCode = http.GET();
   Serial.print("HTTP Response Code: ");
   Serial.println(httpResponseCode);
-  http.end();
-  SendRemoteLogSimpleAPI("SendChargeInfosSimpleAPI");
+
+  if (httpResponseCode >= 200 && httpResponseCode <= 299) {
+    SendRemoteLogSimpleAPI("SendChargeInfosSimpleAPI OK");
+    http.end();
+    return true;
+  }
+  else {
+    SendRemoteLogSimpleAPI("SendChargeInfosSimpleAPI FAILED");
+    http.end();
+    return false;
+  }
 }
 
 //TODO: Testing
-void SendTripInfosSimpleAPI() {
+bool SendTripInfosSimpleAPI() {
   Serial.println("Send Charge Info Log:");
   HTTPClient http;
+
+  float drivenKM = (thisTrip.endKM - thisTrip.startKM) / 10;
+  int drivenMin = (thisTrip.endTime - thisTrip.startTime) / 1000 / 60;
+  int drivenSoC = thisTrip.startSoC - thisTrip.endSoC;
   // SimpleAPI set values bulk
   String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
   String DataURLEncoded = "";
-  DataURLEncoded += "&0_userdata.0.topolino.trip.consumption=" + String((float)(Trip.endSoC - Trip.startSoC) * 0.06, 1);
-  DataURLEncoded += "&0_userdata.0.topolino.trip.dauer=" + String((float)(Trip.endTime - Trip.startTime) / 1000 / 60, 0);
-  DataURLEncoded += "&0_userdata.0.topolino.trip.km=" + String((Trip.endKM - Trip.startKM) / 10, 1);
-  DataURLEncoded += "&0_userdata.0.topolino.trip.maxSpeed=" + String(Trip.maxSpeed, 0);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.consumption=" + String((float)(thisTrip.endSoC - thisTrip.startSoC) * 0.06, 1);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.dauer=" + String((float)(thisTrip.endTime - thisTrip.startTime) / 1000 / 60, 0);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.km=" + String((thisTrip.endKM - thisTrip.startKM) / 10, 1);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.maxSpeed=" + String(thisTrip.maxSpeed, 0);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.SpeedAvg=" + String((drivenKM / drivenMin) * 60, 1);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.consumptionAvg=" + String((drivenSoC * 0.06) / drivenKM * 100,1);
   DataURLEncoded += "&ack=true";
   Serial.print("Data: ");
   Serial.println(URL + DataURLEncoded); 
@@ -1029,8 +1051,17 @@ void SendTripInfosSimpleAPI() {
   int httpResponseCode = http.GET();
   Serial.print("HTTP Response Code: ");
   Serial.println(httpResponseCode);
-  http.end();
-  SendRemoteLogSimpleAPI("SendTripInfosSimpleAPI");
+
+  if (httpResponseCode >= 200 && httpResponseCode <= 299) {
+    SendRemoteLogSimpleAPI("SendTripInfosSimpleAPI OK");
+    http.end();
+    return true;
+  }
+  else {
+    SendRemoteLogSimpleAPI("SendTripInfosSimpleAPI FAILED");
+    http.end();
+    return false;
+  }
 }
 
 void SerialPrintValues() {
@@ -1053,14 +1084,14 @@ void SerialPrintValues() {
 }
 
 void TripRecording() {
-  if ( Trip.maxSpeed < canValues.Speed) { Trip.maxSpeed = canValues.Speed; }
-  if (Trip.startTime == 0) {
-    Trip.startTime = millis();
-    Trip.startKM = canValues.ODO;
+  if ( thisTrip.maxSpeed < canValues.Speed) { thisTrip.maxSpeed = canValues.Speed; }
+  if (thisTrip.startTime == 0) {
+    thisTrip.startTime = millis();
+    thisTrip.startKM = canValues.ODO;
   }
-  Trip.endTime = millis();
-  Trip.endKM = canValues.ODO;  
-  if (Trip.endSoC == 0 || Trip.endSoC > canValues.SoC) { Trip.endSoC = canValues.SoC; }
+  thisTrip.endTime = millis();
+  thisTrip.endKM = canValues.ODO;  
+  if (thisTrip.endSoC == 0 || thisTrip.endSoC > canValues.SoC) { thisTrip.endSoC = canValues.SoC; }
 }
 
 void SleepLightStart() {
