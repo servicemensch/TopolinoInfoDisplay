@@ -9,7 +9,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.71";
+const char VERSION[] = "0.72";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -279,6 +279,8 @@ void loop() {
     thisCharge.startSoC = canValues.SoC;
     thisCharge.startTime = currentMillis;
     tft.fillScreen(COLOR_BACKGROUND);
+
+    SendRemoteLogSimpleAPI(" Charging started");
   }
   // Chekc if chargeing has ended
   if (IsCharging && canValues.OBCRemainingMinutes == -1) {
@@ -286,6 +288,7 @@ void loop() {
     thisCharge.endSoC = canValues.SoC;
     thisCharge.endTime = currentMillis;
     ChargeDataToSend = true;
+    SendRemoteLogSimpleAPI("Charging has ended");
 
     // Show Charge end screen
     DisplayChargingResult();
@@ -685,13 +688,14 @@ void DisplayMainUI() {
   float currentConsumption = 0;
   if (ShowConsumptionAsKW) {
     textstart = 75;                                           // #.##
-    currentConsumption = (float)canValues.Current * canValues.Volt / 1000;
+    currentConsumption = (float)(canValues.Current * canValues.Volt / 1000) * -1;
     if (currentConsumption <0) { textstart = 60;}             // -#.##
     consumptionString = String(currentConsumption, 2) + "kW";
   }
   else {
-    currentConsumption = canValues.Current;
+    currentConsumption = canValues.Current * -1;
     textstart = 110;                  // #.#                  
+    if (currentConsumption >=100) { textstart = 75;}           // ###.#
     if (currentConsumption >=10) { textstart = 95;}           // ##.#
     else if (currentConsumption >= 0) { textstart = 110;}     // #.#
     else if (currentConsumption < -100 ) { textstart = 60;}   // -###.#
@@ -1020,7 +1024,7 @@ bool SendChargeInfoSimpleAPI() {
     return true;
   }
   else {
-    SendRemoteLogSimpleAPI("SendChargeInfosSimpleAPI FAILED - Response Code: " + String(httpResponseCode));
+    SendRemoteLogSimpleAPI("SendChargeInfosSimpleAPI FAILED - Response Code: " + String(httpResponseCode) + " - " + DataURLEncoded);
     http.end();
     return false;
   }
@@ -1059,7 +1063,7 @@ bool SendTripInfosSimpleAPI() {
     return true;
   }
   else {
-    SendRemoteLogSimpleAPI("SendTripInfosSimpleAPI FAILED - Response Code: " + String(httpResponseCode));
+    SendRemoteLogSimpleAPI("SendTripInfosSimpleAPI FAILED - Response Code: " + String(httpResponseCode) + " - " + DataURLEncoded);
     http.end();
     return false;
   }
