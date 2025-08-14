@@ -9,7 +9,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.70";
+const char VERSION[] = "0.71";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -913,7 +913,6 @@ void ConnectWIFIAndSendData() {
 bool SendDataSimpleAPI() {
   Serial.println("Send Data via REST");
   StatusIndicatorTx = TFT_BLUE;
-  bool result = false;
 
   HTTPClient http;
   // SimpleAPI set values bulk
@@ -946,7 +945,6 @@ bool SendDataSimpleAPI() {
 
   if (httpResponseCode >= 200 && httpResponseCode <= 299) {
     StatusIndicatorTx = TFT_GREEN;
-    result = true;
 
     canValues.SoCUp = false;
     canValues.BatteryUp = false;
@@ -961,16 +959,20 @@ bool SendDataSimpleAPI() {
     canValues.RemainingDistanceUp = false;
     canValues.GearUp = false;
     canValues.SpeedUp = false;
+
+    http.end();
+    SendRemoteLogSimpleAPI("SendDataSimpleAPI OK");
+    return true; 
   }
   else {
     StatusIndicatorTx = TFT_RED;
     Serial.print("HTTP Response Code: ");
     Serial.println(httpResponseCode);
+    
+    http.end();
+    SendRemoteLogSimpleAPI("SendDataSimpleAPI FAILED - Response Code: " + String(httpResponseCode));
+    return false; 
   }
-
-  http.end();
-  SendRemoteLogSimpleAPI("SendDataSimpleAPI");
-  return result; 
 }
 
 void SendRemoteLogSimpleAPI(String message) {
@@ -992,7 +994,6 @@ void SendRemoteLogSimpleAPI(String message) {
   http.end();
 }
 
-// TODO: Testting
 bool SendChargeInfoSimpleAPI() {
   Serial.println("Send Charge Info Log:");
   HTTPClient http;
@@ -1007,7 +1008,7 @@ bool SendChargeInfoSimpleAPI() {
   Serial.print("Data: ");
   Serial.println(URL + DataURLEncoded); 
   http.begin(URL + DataURLEncoded);
-  http.setTimeout(1 * 3000); // 1 second timeout
+  http.setTimeout(3 * 3000); // 3 second timeout
   http.setUserAgent("TopolinoInfoDisplay/1.0");
   int httpResponseCode = http.GET();
   Serial.print("HTTP Response Code: ");
@@ -1019,7 +1020,7 @@ bool SendChargeInfoSimpleAPI() {
     return true;
   }
   else {
-    SendRemoteLogSimpleAPI("SendChargeInfosSimpleAPI FAILED");
+    SendRemoteLogSimpleAPI("SendChargeInfosSimpleAPI FAILED - Response Code: " + String(httpResponseCode));
     http.end();
     return false;
   }
@@ -1046,7 +1047,7 @@ bool SendTripInfosSimpleAPI() {
   Serial.print("Data: ");
   Serial.println(URL + DataURLEncoded); 
   http.begin(URL + DataURLEncoded);
-  http.setTimeout(1 * 3000); // 1 second timeout
+  http.setTimeout(3 * 3000); // 3 second timeout
   http.setUserAgent("TopolinoInfoDisplay/1.0");
   int httpResponseCode = http.GET();
   Serial.print("HTTP Response Code: ");
@@ -1058,7 +1059,7 @@ bool SendTripInfosSimpleAPI() {
     return true;
   }
   else {
-    SendRemoteLogSimpleAPI("SendTripInfosSimpleAPI FAILED");
+    SendRemoteLogSimpleAPI("SendTripInfosSimpleAPI FAILED - Response Code: " + String(httpResponseCode));
     http.end();
     return false;
   }
