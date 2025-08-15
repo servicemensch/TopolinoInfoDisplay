@@ -9,7 +9,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.72";
+const char VERSION[] = "0.75";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -923,7 +923,7 @@ bool SendDataSimpleAPI() {
   String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
 
   String DataURLEncoded = "";
-  if (canValues.SoCUp) {DataURLEncoded += "&0_userdata.0.topolino.SoC=" + String(canValues.SoC);}
+  DataURLEncoded += "&0_userdata.0.topolino.SoC=" + String(canValues.SoC);
   if (canValues.BatteryUp) {DataURLEncoded += "&0_userdata.0.topolino.12VBatt=" + String(canValues.Battery); }
   if (canValues.CurrentUp) { DataURLEncoded += "&0_userdata.0.topolino.BattA=" + String(canValues.Current); }
   if (canValues.Temp1Up) { DataURLEncoded += "&0_userdata.0.topolino.BattTemp1=" + String(canValues.Temp1); }
@@ -974,7 +974,7 @@ bool SendDataSimpleAPI() {
     Serial.println(httpResponseCode);
     
     http.end();
-    SendRemoteLogSimpleAPI("SendDataSimpleAPI FAILED - Response Code: " + String(httpResponseCode));
+    SendRemoteLogSimpleAPI("SendDataSimpleAPI FAILED - Response Code: " + String(httpResponseCode) + " - " + DataURLEncoded);
     return false; 
   }
 }
@@ -998,17 +998,19 @@ void SendRemoteLogSimpleAPI(String message) {
   http.end();
 }
 
+//TODO: Testing
 bool SendChargeInfoSimpleAPI() {
   Serial.println("Send Charge Info Log:");
   HTTPClient http;
   // SimpleAPI set values bulk
   String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
   String DataURLEncoded = "";
-  DataURLEncoded += "&0_userdata.0.topolino.charge.dauer=" + String((float)(thisCharge.endTime - thisCharge.startTime) / 1000 / 60, 0);
+  DataURLEncoded += "&0_userdata.0.topolino.charge.dauer=" + String((thisCharge.endTime - thisCharge.startTime) / 1000 / 60);
   DataURLEncoded += "&0_userdata.0.topolino.charge.ladung=" + String((thisCharge.endSoC - thisCharge.startSoC) * 0.06, 1);
   DataURLEncoded += "&0_userdata.0.topolino.charge.startSoC=" + String(thisCharge.startSoC);
   DataURLEncoded += "&0_userdata.0.topolino.charge.endSoC=" + String(thisCharge.endSoC);
   DataURLEncoded += "&ack=true";
+
   Serial.print("Data: ");
   Serial.println(URL + DataURLEncoded); 
   http.begin(URL + DataURLEncoded);
@@ -1030,7 +1032,6 @@ bool SendChargeInfoSimpleAPI() {
   }
 }
 
-//TODO: Testing
 bool SendTripInfosSimpleAPI() {
   Serial.println("Send Charge Info Log:");
   HTTPClient http;
@@ -1042,12 +1043,13 @@ bool SendTripInfosSimpleAPI() {
   String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
   String DataURLEncoded = "";
   DataURLEncoded += "&0_userdata.0.topolino.trip.consumption=" + String((float)(thisTrip.endSoC - thisTrip.startSoC) * 0.06, 1);
-  DataURLEncoded += "&0_userdata.0.topolino.trip.dauer=" + String((float)(thisTrip.endTime - thisTrip.startTime) / 1000 / 60, 0);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.dauer=" + String((thisTrip.endTime - thisTrip.startTime) / 1000 / 60);
   DataURLEncoded += "&0_userdata.0.topolino.trip.km=" + String((thisTrip.endKM - thisTrip.startKM) / 10, 1);
   DataURLEncoded += "&0_userdata.0.topolino.trip.maxSpeed=" + String(thisTrip.maxSpeed, 0);
   DataURLEncoded += "&0_userdata.0.topolino.trip.SpeedAvg=" + String((drivenKM / drivenMin) * 60, 1);
   DataURLEncoded += "&0_userdata.0.topolino.trip.consumptionAvg=" + String((drivenSoC * 0.06) / drivenKM * 100,1);
   DataURLEncoded += "&ack=true";
+
   Serial.print("Data: ");
   Serial.println(URL + DataURLEncoded); 
   http.begin(URL + DataURLEncoded);
@@ -1166,13 +1168,13 @@ void SleepLightStart() {
   tft.setTextSize(1);
   tft.drawString("Tx", 135, 222);
   
-  SendRemoteLogSimpleAPI(" Light Sleep");
+  SendRemoteLogSimpleAPI("Light Sleep");
 }
 
 void SleepDeepStart() {
 
   Serial.println("Going to Deep sleep...");
-
+  SendRemoteLogSimpleAPI("Deep Sleep");
   // Turn off display power
   digitalWrite(DISPLAY_POWER_PIN, LOW);
 
