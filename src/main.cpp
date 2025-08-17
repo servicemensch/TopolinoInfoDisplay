@@ -11,7 +11,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.77";
+const char VERSION[] = "0.80";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -639,17 +639,18 @@ void DisplayBoot() {
   delay(500);
   tft.setTextColor(COLOR_TOPOLINO);
   tft.setTextSize(3);
-  tft.drawString("Topolino",30,70);
+  tft.drawCentreString("Topolino",120, 35, 1);
+  tft.setTextColor(TFT_DARKGREY);
   delay(500);
-  tft.drawString("Info",60,100);
+  tft.drawString("Info",40,100);
   delay(500);
-  tft.drawString("Display",90,130);
+  tft.drawString("Display",70,130);
   delay(500);
   tft.setTextSize(2);
   tft.setTextColor(COLOR_ALMOSTBLACK);
-  tft.drawString("Version: " + String(VERSION), 40, 190);
+  tft.drawString("Version: " + String(VERSION), 40, 185);
   #ifdef DEBUG
-    tft.drawString("DEBUG", 75, 220);
+    tft.drawCentreString("DEBUG", 120, 220, 1);
   #endif
   delay(3000);
 }
@@ -681,25 +682,24 @@ void DisplayMainUI() {
   }
   else {
     // No Consumption (Dead zone 0 bis -2)
-    tft.drawSmoothArc(120,120, 118, 107, 149, 150, TFT_BLUE, COLOR_BACKGROUND, true);
+    tft.drawSmoothArc(120,120, 118, 107, 149, 150, COLOR_TOPOLINO, COLOR_BACKGROUND, true);
   }
   
   // Consumption value  
   tft.setTextColor(TFT_WHITE, COLOR_ALMOSTBLACK, true);
   tft.setTextSize(3);
   String consumptionString;
-
   float currentConsumption = 0;
   if (ShowConsumptionAsKW) {
     currentConsumption = (float)(canValues.Current * canValues.Volt / 1000) * -1;         // -#.##
-    consumptionString = String(currentConsumption, 2) + "kW";
+    consumptionString = String(currentConsumption, 2) + " kW";
   }
   else {
     currentConsumption = canValues.Current * -1;
-    consumptionString = String(currentConsumption, 1) + "A";
+    consumptionString = String(currentConsumption, 1) + " A";
   }
   tft.fillSmoothRoundRect(40, 65, 160, 60, 10, COLOR_ALMOSTBLACK, COLOR_BACKGROUND); // Reset backgroubnd
-  tft.drawRightString(consumptionString, 165, 85, 1);
+  tft.drawRightString(consumptionString, 185, 85, 1);
 
   // Battery Temperature
   float tempAverage = (canValues.Temp1 + canValues.Temp2) / 2.0;
@@ -736,7 +736,7 @@ void DisplayMainUI() {
   tft.setTextSize(2);
   if (canValues.Volt < 51.2 || canValues.Volt > 58) { tft.setTextColor(TFT_ORANGE); } 
   else {tft.setTextColor(TFT_WHITE);}
-  tft.drawString(String(canValues.Volt, 1) + "V", 90, 143);
+  tft.drawCentreString(String(canValues.Volt, 1) + "V", 120, 143, 1);
 
   // SoC
   tft.setTextSize(2);
@@ -744,7 +744,7 @@ void DisplayMainUI() {
   else if (canValues.SoC < 30) { tft.setTextColor(TFT_YELLOW); }
   else if (canValues.SoC > 90) { tft.setTextColor(TFT_DARKCYAN); }
   else { tft.setTextColor(COLOR_GREY); }
-  tft.fillRect(104, 39, 50, 20, COLOR_BACKGROUND); // Reset text background
+  tft.fillRect(90, 39, 70, 20, COLOR_BACKGROUND); // Reset text background
   tft.drawCentreString(String(canValues.SoC) + "%", 120, 40, 1);
 
   // Status Indicator
