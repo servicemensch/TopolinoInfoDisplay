@@ -7,11 +7,12 @@
 #include <UrlEncode.h>
 #include <ACAN2515.h>
 #include <TelnetStream.h>
+#include <BluetoothSerial.h>
 #include <img.h>
 
-//#define DEBUG
+#define DEBUG
 
-const char VERSION[] = "0.80";
+const char VERSION[] = "0.81";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -79,6 +80,7 @@ struct Charge {
 TFT_eSPI tft = TFT_eSPI();
 SPIClass hspi = SPIClass(HSPI);
 ACAN2515 can((int)CAN_CS, hspi, (int)CAN_INTERRUPT);
+BluetoothSerial BT;
 
 #include "../config/config.h"
 
@@ -91,9 +93,13 @@ unsigned long SerialOutputLastRun = 0;
 const unsigned int TripRecordInterval = 1 * 1000;
 unsigned long TripRecordingLastRun = 0;
 unsigned long KeepAliveLastRun = 0;
+unsigned long ReversingLightLastRun = 0;
 
 // Deep Sleep Timeout
-#define DEEP_SLEEP_TIMEOUT 10 * 60 * 1000 // 10 minutes in milliseconds
+#define DEEP_SLEEP_TIMEOUT 10 * 60 * 1000 // 10 minutes in milliseconds1
+
+// Bluetooth relais module
+uint8_t BT_Slave_MAC[6] = {0x59, 0x95, 0xA4, 0x50, 0x71, 0x78}; // 59:95:A4:50:71:78
 
 // Globals
 int CanError = 0;
@@ -113,6 +119,7 @@ unsigned long StatusIndicatorWIFI = TFT_DARKGREY;
 unsigned long StatusIndicatorTx = TFT_DARKGREY;
 bool IsSleeping = false;
 bool IsCharging = false;
+unsigned int BTReconnectCounter = 0;
 
 // put function declarations here:
 void CanConnect();
@@ -138,6 +145,9 @@ float average(float newvalue, float &buffer, float factor);
 void DebugFakeValues();
 void Log(String message, bool RemoteLog);
 void Log(String message);
+bool BTConnect(int timeout);
+void BTDisconnect();
+void BTSetRelais(int relais, bool state);
 
 // =====================================================================================================
 // Make everything ready ===============================================================================
@@ -181,6 +191,9 @@ void setup() {
 
   // Start Telnet stream for remote logging
   TelnetStream.begin();
+
+  // Start Bluetooth
+  BTConnect(10000);
   
   // Over The Air update config
   ArduinoOTA.setHostname("TopolinoInfoDisplayOTA");
@@ -192,17 +205,6 @@ void setup() {
 
 #ifdef DEBUG
   // Debug
-  canValues.OBCRemainingMinutes = 0;
-  canValues.SoC = 50;
-  thisCharge.startSoC = 30;
-  thisCharge.startTime = millis();
-  canValues.Current = 12.3;
-  Log(canValues.SoC);
-  Log (thisCharge.startSoC);
-  Log(canValues.Current);
-  delay(10000);
-  DisplayCharging();
-  delay(60000);
 #endif
 }
 
@@ -217,11 +219,15 @@ void loop() {
   if (currentMillis - KeepAliveLastRun >= 1000) {
     KeepAliveLastRun = currentMillis;
     digitalWrite(ONBOARD_LED, !digitalRead(ONBOARD_LED));
-    if (StatusIndicatorStatus == TFT_WHITE) {
-      if (TripActive) { StatusIndicatorStatus = TFT_DARKCYAN; }
+
+    if (StatusIndicatorStatus == TFT_WHITE || StatusIndicatorStatus == TFT_BLUE) {
+      if (TripActive) { StatusIndicatorStatus = TFT_YELLOW; }
       else { StatusIndicatorStatus = TFT_GREEN; }
     }
-    else {StatusIndicatorStatus = TFT_WHITE;}
+    else {
+      if (BT.connected()) { StatusIndicatorStatus = TFT_BLUE; }
+      else { StatusIndicatorStatus = TFT_WHITE; }
+    }
   }
 
   // Display Main UI / refresh Values
@@ -245,6 +251,26 @@ void loop() {
   }
   else if ( CanMessagesLastRecived - currentMillis > 5000) { // If no CAN messages received for 5 seconds, set indicator to grey
     StatusIndicatorCAN =  TFT_DARKGREY;
+  }
+
+  // Reversing Light
+  if (currentMillis - ReversingLightLastRun >= 500) {
+    ReversingLightLastRun = currentMillis;
+    if (BT.connected()) {
+      if (canValues.Gear == "R") {
+        Log("Reversing Light ON");
+        BTSetRelais(1, true); // Turn on reversing light
+      } else {
+        Log("Reversing Light OFF");
+        BTSetRelais(1, false); // Turn off reversing light
+      }
+    }
+    else
+    {
+      Log("Reversing lights not operational - Bluetooth not connected!");
+      BTReconnectCounter++;
+      if (BTReconnectCounter <= 3) {if (BTConnect(1000)) {BTReconnectCounter = 0;} }
+    }
   }
 
   // Check for new trip recording
@@ -344,7 +370,6 @@ void loop() {
   if ((currentMillis - CanMessagesLastRecived) > DEEP_SLEEP_TIMEOUT) {  
     SleepDeepStart();
   }
-
 
   delay(25); //loop delay
 }
@@ -1161,6 +1186,7 @@ void SleepDeepStart() {
   Log("Going to Deep sleep...");
   Log("Deep Sleep", true);
   TelnetStream.stop();
+  BTDisconnect();
   // Turn off display power
   digitalWrite(DISPLAY_POWER_PIN, LOW);
 
@@ -1202,3 +1228,76 @@ void Log(String message, bool RemoteLog) {
 }
 
 void Log(String message) { Log(message, false); }
+
+bool BTConnect(int timeout) {
+  BT.begin("TopolinoInfoDisplayBT", true);
+  BT.setPin("1234");
+  BT.setTimeout(timeout); // 10 seconds BLOCKING !
+  Log("Bluetooth started");
+
+  #ifdef DEBUG
+    BTScanResults* BTSCan = BT.discover(30 * 1280); // Discover devices for 30 seconds
+    Log("Bluetooth discoverd devices: " + String(BTSCan->getCount()), true);
+    for (int i = 0; i < BTSCan->getCount(); i++) {
+      BTAdvertisedDevice* device = BTSCan->getDevice(i);
+      Log("Device " + String(i) + ": " + device->getName().c_str() + " - " + device->getAddress().toString().c_str() + " - RSSI: " + String(device->getRSSI()) + " dBm");
+  }
+  #endif
+
+  if (BT.connect(BT_Slave_MAC))
+  {
+    Log("Bluetooth connected");
+    return true;
+  }
+  else {
+    Log("Bluetooth NOT connected!", true);
+    return false;
+  }
+}
+
+void BTDisconnect() {
+  Log("Bluetooth disconnect");
+  BT.disconnect();
+  BT.end();
+}
+
+void BTSetRelais(int relais, bool state) {
+  //Check inpout
+  if (relais < 1 || relais > 2) {
+    Log("BTSetRelais: Invalid relais number: " + String(relais));
+    return;
+  }
+
+  // Check BT connection
+  if (!BT.connected()) {
+    Log("BTSetRelais: Bluetooth not connected!", true);
+    return;
+  }
+
+  // Send command to the right relais
+  switch (relais) {
+    case 1:
+      if (state) {
+        uint8_t command[] = {0xA0, 0x01, 0x01, 0xA2, 0x0D, 0x0A}; // 1 an
+        BT.write(command, sizeof(command));
+      } 
+      else {
+        uint8_t command[] = {0xA0, 0x01, 0x00, 0xA1, 0x0D, 0x0A}; // 1 aus
+        BT.write(command, sizeof(command));
+      }
+      break;
+    case 2:
+      if (state) {
+        uint8_t command[] = {0xA0, 0x02, 0x01, 0xA3, 0x0D, 0x0A}; // 2 an
+        BT.write(command, sizeof(command));
+      } 
+      else {
+        uint8_t command[] = {0xA0, 0x02, 0x00, 0xA2, 0x0D, 0x0A}; // 2 aus
+        BT.write(command, sizeof(command));
+      }
+      break;
+    default:
+      break;
+}
+
+}
