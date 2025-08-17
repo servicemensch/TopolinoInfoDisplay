@@ -6,10 +6,12 @@
 #include <TFT_eSPI.h>
 #include <UrlEncode.h>
 #include <ACAN2515.h>
+#include <TelnetStream.h>
+#include <img.h>
 
 //#define DEBUG
 
-const char VERSION[] = "0.75";
+const char VERSION[] = "0.77";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -26,7 +28,7 @@ const char VERSION[] = "0.75";
 #define COLOR_BACKGROUND 0x2104
 #define COLOR_BG_GREEN 0x0140
 #define COLOR_BG_RED 0x3000
-#define COLOR_TOPOLINO 0x07fc
+#define COLOR_TOPOLINO 0x05f5
 #define COLOR_GREY 0xa554
 
 struct trip {
@@ -134,6 +136,8 @@ void SleepLightStart();
 void SleepDeepStart();
 float average(float newvalue, float &buffer, float factor);
 void DebugFakeValues();
+void Log(String message, bool RemoteLog);
+void Log(String message);
 
 // =====================================================================================================
 // Make everything ready ===============================================================================
@@ -174,12 +178,15 @@ void setup() {
 
   // Connect WIFI to enable OTA update at boot
   WIFIConnect();
+
+  // Start Telnet stream for remote logging
+  TelnetStream.begin();
   
   // Over The Air update config
   ArduinoOTA.setHostname("TopolinoInfoDisplayOTA");
   ArduinoOTA.begin();
   
-  SendRemoteLogSimpleAPI("TopolinoInfoDisplay started - Version: " + String(VERSION));
+  Log("TopolinoInfoDisplay started - Version: " + String(VERSION), true);
 
   digitalWrite(ONBOARD_LED, LOW);
 
@@ -190,9 +197,9 @@ void setup() {
   thisCharge.startSoC = 30;
   thisCharge.startTime = millis();
   canValues.Current = 12.3;
-  Serial.println(canValues.SoC);
-  Serial.println (thisCharge.startSoC);
-  Serial.println(canValues.Current);
+  Log(canValues.SoC);
+  Log (thisCharge.startSoC);
+  Log(canValues.Current);
   delay(10000);
   DisplayCharging();
   delay(60000);
@@ -204,7 +211,7 @@ void setup() {
 // =====================================================================================================
 void loop() {
   unsigned long currentMillis = millis();
-  //Serial.println(" - Tick: " + String(currentMillis));
+  //Log(" - Tick: " + String(currentMillis));
 
   // Be Alive status
   if (currentMillis - KeepAliveLastRun >= 1000) {
@@ -233,7 +240,7 @@ void loop() {
     CANCheckMessage();
   }
   else if (CanError) {
-    Serial.println("CAN Connect...");
+    Log("CAN Connect...");
     CanConnect();
   }
   else if ( CanMessagesLastRecived - currentMillis > 5000) { // If no CAN messages received for 5 seconds, set indicator to grey
@@ -243,7 +250,7 @@ void loop() {
   // Check for new trip recording
   if (canValues.Ready == 1 && canValues.Speed > 0 && !TripActive) {
     TripActive = true;
-    Serial.println("Trip started at " + String(thisTrip.startTime) + " with ODO: " + String(thisTrip.startKM));
+    Log("Trip started at " + String(thisTrip.startTime) + " with ODO: " + String(thisTrip.startKM));
     // Reset Trip data
     thisTrip.startTime = 0;
     thisTrip.endTime = 0;
@@ -280,7 +287,7 @@ void loop() {
     thisCharge.startTime = currentMillis;
     tft.fillScreen(COLOR_BACKGROUND);
 
-    SendRemoteLogSimpleAPI(" Charging started");
+    Log(" Charging started", true);
   }
   // Chekc if chargeing has ended
   if (IsCharging && canValues.OBCRemainingMinutes == -1) {
@@ -288,7 +295,7 @@ void loop() {
     thisCharge.endSoC = canValues.SoC;
     thisCharge.endTime = currentMillis;
     ChargeDataToSend = true;
-    SendRemoteLogSimpleAPI("Charging has ended");
+    Log("Charging has ended", true);
 
     // Show Charge end screen
     DisplayChargingResult();
@@ -312,7 +319,7 @@ void loop() {
   }
   else if (canValues.Speed > 1 && WiFi.status() != WL_NO_SHIELD)  { // deactivate tranismitting when driving
     #ifdef DEBUG
-    Serial.println("WIFI Stratus: " + String(WiFi.status()));
+    Log("WIFI Stratus: " + String(WiFi.status()));
     #endif
     WIFIDisconnect();
     StatusIndicatorWIFI = TFT_DARKGREY;
@@ -372,28 +379,28 @@ void CanConnect () {
   CanError = can.begin(CanSettings, [] { can.isr () ; });
 
   if ( CanError == 0) {
-    Serial.println("CAN-Module Initialized Successfully!");
+    Log("CAN-Module Initialized Successfully!");
     StatusIndicatorCAN = TFT_LIGHTGREY;
     } 
   else {
-    Serial.println("ERROR: Initializing CAN-Module failed! ErrCode: " + String(CanError));
+    Log("ERROR: Initializing CAN-Module failed! ErrCode: " + String(CanError));
     StatusIndicatorCAN = TFT_RED;
     }
   CanMessagesLastRecived = millis();
 }
 
 void CANCheckMessage(){
-  //Serial.println("CAN check message"); 
+  //Log("CAN check message"); 
 
   CANMessage canMsg;
   while (can.receive(canMsg)) {
     StatusIndicatorCAN = TFT_GREEN;
 
     //can.receive(canMsg);
-    //Serial.println("CAN Message recived - ID: " + String(canMsg.id, HEX)); 
-    //Serial.println("CAN Message recived - DLC: " + String(canMsg.len));
-    //Serial.println("CAN Message recived - RTR:" + String(canMsg.rtr));
-    //Serial.println("CAN Message recived - Data: " + String(canMsg.data[0], HEX) + " " + String(canMsg.data[1], HEX) + " " + String(canMsg.data[2], HEX) + " " + String(canMsg.data[3], HEX) + " " + String(canMsg.data[4], HEX) + " " + String(canMsg.data[5], HEX) + " " + String(canMsg.data[6], HEX) + " " + String(canMsg.data[7], HEX) + " " + String(canMsg.data[8], HEX));
+    //Log("CAN Message recived - ID: " + String(canMsg.id, HEX)); 
+    //Log("CAN Message recived - DLC: " + String(canMsg.len));
+    //Log("CAN Message recived - RTR:" + String(canMsg.rtr));
+    //Log("CAN Message recived - Data: " + String(canMsg.data[0], HEX) + " " + String(canMsg.data[1], HEX) + " " + String(canMsg.data[2], HEX) + " " + String(canMsg.data[3], HEX) + " " + String(canMsg.data[4], HEX) + " " + String(canMsg.data[5], HEX) + " " + String(canMsg.data[6], HEX) + " " + String(canMsg.data[7], HEX) + " " + String(canMsg.data[8], HEX));
 
     if (!canMsg.rtr) {
       CanMessagesProcessed++;
@@ -407,16 +414,16 @@ void CANCheckMessage(){
         // Electronic control Unit (ECU)
         case 0x581: { 
           StatusIndicatorCAN = TFT_BLUE;
-          if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
+          if (!canMsg.len == 8) {Log("CAN: Wrong Lenght"); break;}
           // Odo
           unsigned int value1 = canMsg.data[6] << 16 | canMsg.data[5] << 8 | canMsg.data[4];
-          //Serial.println("- CAN Value ODO: " + String(value1));
+          //Log("- CAN Value ODO: " + String(value1));
           canValues.ODO = (float)value1;
           canValues.ODOUp = true;
 
           // Speed 
           unsigned int value = canMsg.data[7];
-          //Serial.println("- CAN Value Speed: " + String(value));          
+          //Log("- CAN Value Speed: " + String(value));          
           canValues.Speed = value;
           canValues.SpeedUp = true;
           }
@@ -425,11 +432,11 @@ void CANCheckMessage(){
         // Onboard Charger
         case 0x582: { 
           StatusIndicatorCAN = TFT_BLUE;
-          if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
+          if (!canMsg.len == 8) {Log("CAN: Wrong Lenght"); break;}
           
           // Remaining Time
           unsigned int value = canMsg.data[1] << 8 | canMsg.data[0];
-          //Serial.println("- CAN Value Remaining Time: " + String(value)); 
+          //Log("- CAN Value Remaining Time: " + String(value)); 
           canValues.OBCRemainingMinutes = value / 60;
           if (canValues.OBCRemainingMinutes > 600) { canValues.OBCRemainingMinutes = -1; } // not charging
           canValues.OBCRemainingMinutesUp = true;
@@ -439,9 +446,9 @@ void CANCheckMessage(){
         // 12V Battery
         case 0x593: {
           StatusIndicatorCAN = TFT_BLUE;
-          if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
+          if (!canMsg.len == 8) {Log("CAN: Wrong Lenght"); break;}
           unsigned int value = (canMsg.data[1] << 8) | canMsg.data[0];
-          //Serial.println("- CAN Value 12V: " + String(value));
+          //Log("- CAN Value 12V: " + String(value));
           canValues.Battery = (float)value / 100;
           canValues.BatteryUp = true;
           }
@@ -450,17 +457,17 @@ void CANCheckMessage(){
         // Main Battery Temperature
         case 0x594: {
           StatusIndicatorCAN = TFT_BLUE;
-          if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
+          if (!canMsg.len == 8) {Log("CAN: Wrong Lenght"); break;}
           
           // Temp 1
           int value1 = canMsg.data[0];
-          //Serial.println("- CAN Value Temp1: " + String(value1));
+          //Log("- CAN Value Temp1: " + String(value1));
           canValues.Temp1 = value1;
           canValues.Temp1Up = true;
 
           //Temp 2
           int value2 = canMsg.data[3];
-          //Serial.println("- CAN Value Temp2: " + String(value2));
+          //Log("- CAN Value Temp2: " + String(value2));
           canValues.Temp2 = value2;
           canValues.Temp2Up = true;
           }          
@@ -469,20 +476,20 @@ void CANCheckMessage(){
         // Main Battery Voltage and Current
         case 0x580: {
           StatusIndicatorCAN = TFT_BLUE;
-          if (!canMsg.len == 8) {Serial.println("CAN: Wrong Lenght"); break;}
+          if (!canMsg.len == 8) {Log("CAN: Wrong Lenght"); break;}
 
           // Current
           int value1 = (canMsg.data[1] << 8 | canMsg.data[0]);
           if (value1 > 32767) {
             value1 = value1 - 65536; // Convert to signed int
             }
-          //Serial.println("- CAN Value Current: " + String(value1));
+          //Log("- CAN Value Current: " + String(value1));
          canValues.Current = average((float)value1 / 10, Value_Battery_Current_Buffer, 3); // Average over 3 values 
          canValues.CurrentUp = true;
 
           //Voltage
           int value2 = (canMsg.data[3] << 8) | canMsg.data[2];
-          //Serial.println("- CAN Value Voltage: " + String(value2));
+          //Log("- CAN Value Voltage: " + String(value2));
           if (value2 > 4200 && value2 < 6500) { // Check is value is in valid range
             canValues.Volt = (float)value2 / 100;
             canValues.VoltUp = true;
@@ -490,7 +497,7 @@ void CANCheckMessage(){
         
           // SoC
           unsigned int value3 = canMsg.data[5];
-          //Serial.println("- CAN Value SoC: " + String(value3));
+          //Log("- CAN Value SoC: " + String(value3));
           canValues.SoC = value3;
           canValues.SoCUp = true;
           }
@@ -499,8 +506,8 @@ void CANCheckMessage(){
         // Display
         case 0x713: {
           StatusIndicatorCAN = TFT_BLUE;
-          if (!canMsg.len == 7) {Serial.println("CAN: Wrong Lenght"); break;}
-          //Serial.println("CAN: Display Message Data:" + String(canMsg.data[0],HEX) + " " + String(canMsg.data[1],HEX) + " " + String(canMsg.data[2],HEX) + " " + String(canMsg.data[3],HEX) + " " + String(canMsg.data[4],HEX) + " " + String(canMsg.data[5],HEX) + " " + String(canMsg.data[6],HEX));
+          if (!canMsg.len == 7) {Log("CAN: Wrong Lenght"); break;}
+          //Log("CAN: Display Message Data:" + String(canMsg.data[0],HEX) + " " + String(canMsg.data[1],HEX) + " " + String(canMsg.data[2],HEX) + " " + String(canMsg.data[3],HEX) + " " + String(canMsg.data[4],HEX) + " " + String(canMsg.data[5],HEX) + " " + String(canMsg.data[6],HEX));
 
           int value1 = ((canMsg.data[1] & 0x01) << 1) | ((canMsg.data[0] >> 7) & 0x01);
           // Gear
@@ -522,11 +529,11 @@ void CANCheckMessage(){
               break;
             }
             canValues.GearUp = true;
-          //Serial.println("- CAN Value Gear Selected Bits: " + String(value1, BIN));
+          //Log("- CAN Value Gear Selected Bits: " + String(value1, BIN));
 
           // Remaining Distance
           unsigned int value2 = canMsg.data[0] & 0x3F; // Mask to get the lower 6 bits
-          //Serial.println("- CAN Value Remaining Distance2: " + String(value2));
+          //Log("- CAN Value Remaining Distance2: " + String(value2));
           canValues.RemainingDistance = value2;
           canValues.RemainingDistanceUp = true; 
           
@@ -543,15 +550,15 @@ void CANCheckMessage(){
               break;
           }
           canValues.ReadyUp = true;
-          //Serial.println("- CAN Value Ready: " + String(canMsg.data[2], BIN)); //ready 0b101  not 0b11
+          //Log("- CAN Value Ready: " + String(canMsg.data[2], BIN)); //ready 0b101  not 0b11
           }
           break;
 
         // Handbreak
         case 0x714: {
           StatusIndicatorCAN = TFT_BLUE;
-          //Serial.println("CAN:  Handbreak");
-          if (!canMsg.len == 2) {Serial.println("CAN: Wrong Lenght"); break;}
+          //Log("CAN:  Handbreak");
+          if (!canMsg.len == 2) {Log("CAN: Wrong Lenght"); break;}
 
           // Brake
           if (canMsg.data[0] == 0x01) {
@@ -565,7 +572,7 @@ void CANCheckMessage(){
             }
           }
           canValues.HandbrakeUp = true;
-          //Serial.println("- CAN Value Brake: " + String(canMsg.data[0], HEX));
+          //Log("- CAN Value Brake: " + String(canMsg.data[0], HEX));
 
           break;
         }
@@ -580,8 +587,7 @@ void CANCheckMessage(){
 }
 
 bool WIFIConnect(){
-  Serial.print("WIFI Connect to SSID: "); 
-  Serial.println(YourWIFI_SSID);
+  Log("WIFI Connect to SSID: " + String(YourWIFI_SSID));
   
   // Check if already connected
   if (WIFICheckConnection()) {return true; }
@@ -597,8 +603,7 @@ bool WIFIConnect(){
   //Wait for connect
   while (WiFi.status () != WL_CONNECTED) {
     delay(1000);
-    Serial.print("WIFI Connecting....");
-    Serial.println(WiFi.status());
+    Log("WIFI Connecting...." + String(WiFi.status()));
     i++;
     if ( i > 5) { break; }
   }
@@ -608,14 +613,12 @@ bool WIFIConnect(){
 
 bool WIFICheckConnection() { 
   if (WiFi.status () == WL_CONNECTED) {
-    Serial.print("WIFI Connected! IP: ");
-    Serial.println(WiFi.localIP());
+    Log("WIFI Connected! IP: " + String(WiFi.localIP()));
     StatusIndicatorWIFI = TFT_GREEN;
     return true;
   }
   else {
-    Serial.print("WIFI NOT connected! Status: ");
-    Serial.println(WiFi.status());
+    Log("WIFI NOT connected! Status: " + String(WiFi.status()));
     StatusIndicatorWIFI = TFT_RED;
     return false;
   }
@@ -623,7 +626,7 @@ bool WIFICheckConnection() {
 
 void WIFIDisconnect(){
 #ifdef DEBUG
-  Serial.println("WIFI disconnect");
+  Log("WIFI disconnect");
 #endif
   WiFi.disconnect();
   WiFi.mode(WIFI_OFF);
@@ -631,21 +634,22 @@ void WIFIDisconnect(){
 }
 
 void DisplayBoot() {
-  tft.fillRectHGradient(0, 0, 240, 240, 0x038d, COLOR_TOPOLINO);
+  tft.setSwapBytes(true);
+  tft.pushImage(0, 0, img1_width, img1_height, img1);
   delay(500);
-  tft.setTextColor(TFT_WHITE);
+  tft.setTextColor(COLOR_TOPOLINO);
   tft.setTextSize(3);
   tft.drawString("Topolino",30,70);
   delay(500);
-  tft.drawString("Info",115,100);
+  tft.drawString("Info",60,100);
   delay(500);
   tft.drawString("Display",90,130);
   delay(500);
   tft.setTextSize(2);
-  tft.setTextColor(TFT_BLACK);
-  tft.drawString("Version: " + String(VERSION), 40, 160);
+  tft.setTextColor(COLOR_ALMOSTBLACK);
+  tft.drawString("Version: " + String(VERSION), 40, 190);
   #ifdef DEBUG
-    tft.drawString("DEBUG", 75, 180);
+    tft.drawString("DEBUG", 75, 220);
   #endif
   delay(3000);
 }
@@ -684,27 +688,18 @@ void DisplayMainUI() {
   tft.setTextColor(TFT_WHITE, COLOR_ALMOSTBLACK, true);
   tft.setTextSize(3);
   String consumptionString;
-  int textstart;
+
   float currentConsumption = 0;
   if (ShowConsumptionAsKW) {
-    textstart = 75;                                           // #.##
-    currentConsumption = (float)(canValues.Current * canValues.Volt / 1000) * -1;
-    if (currentConsumption <0) { textstart = 60;}             // -#.##
+    currentConsumption = (float)(canValues.Current * canValues.Volt / 1000) * -1;         // -#.##
     consumptionString = String(currentConsumption, 2) + "kW";
   }
   else {
     currentConsumption = canValues.Current * -1;
-    textstart = 110;                  // #.#                  
-    if (currentConsumption >=100) { textstart = 75;}           // ###.#
-    if (currentConsumption >=10) { textstart = 95;}           // ##.#
-    else if (currentConsumption >= 0) { textstart = 110;}     // #.#
-    else if (currentConsumption < -100 ) { textstart = 60;}   // -###.#
-    else if (currentConsumption < -10) { textstart = 75;}     // -##.#
-    else if (currentConsumption < 0) { textstart = 95;}       // -#.#
     consumptionString = String(currentConsumption, 1) + "A";
   }
   tft.fillSmoothRoundRect(40, 65, 160, 60, 10, COLOR_ALMOSTBLACK, COLOR_BACKGROUND); // Reset backgroubnd
-  tft.drawString(consumptionString, textstart, 85);
+  tft.drawRightString(consumptionString, 165, 85, 1);
 
   // Battery Temperature
   float tempAverage = (canValues.Temp1 + canValues.Temp2) / 2.0;
@@ -750,7 +745,7 @@ void DisplayMainUI() {
   else if (canValues.SoC > 90) { tft.setTextColor(TFT_DARKCYAN); }
   else { tft.setTextColor(COLOR_GREY); }
   tft.fillRect(104, 39, 50, 20, COLOR_BACKGROUND); // Reset text background
-  tft.drawString(String(canValues.SoC) + "%", 105, 40);
+  tft.drawCentreString(String(canValues.SoC) + "%", 120, 40, 1);
 
   // Status Indicator
   tft.drawRoundRect(63, 190, 55, 20, 8, COLOR_ALMOSTBLACK);
@@ -915,7 +910,7 @@ void ConnectWIFIAndSendData() {
 }
 
 bool SendDataSimpleAPI() {
-  Serial.println("Send Data via REST");
+  Log("Send Data via REST");
   StatusIndicatorTx = TFT_BLUE;
 
   HTTPClient http;
@@ -938,14 +933,12 @@ bool SendDataSimpleAPI() {
   if (canValues.SpeedUp) { DataURLEncoded += "&0_userdata.0.topolino.speed=" + String(canValues.Speed); }
   DataURLEncoded += "&ack=true";
 
-  Serial.print("Data: ");
-  Serial.println(URL + DataURLEncoded); 
+  Log("URL: " + String(URL) + String(DataURLEncoded)); 
   http.begin(URL + DataURLEncoded);
   http.setTimeout(3 * 1000); // 3 seconds timeout
   http.setUserAgent("TopolinoInfoDisplay/1.0");
   int httpResponseCode = http.GET();
-  Serial.print("HTTP Response Code: ");
-  Serial.println(httpResponseCode);
+  Log("HTTP Response Code: " + String(httpResponseCode));
 
   if (httpResponseCode >= 200 && httpResponseCode <= 299) {
     StatusIndicatorTx = TFT_GREEN;
@@ -965,42 +958,38 @@ bool SendDataSimpleAPI() {
     canValues.SpeedUp = false;
 
     http.end();
-    SendRemoteLogSimpleAPI("SendDataSimpleAPI OK");
+    Log("SendDataSimpleAPI OK");
     return true; 
   }
   else {
     StatusIndicatorTx = TFT_RED;
-    Serial.print("HTTP Response Code: ");
-    Serial.println(httpResponseCode);
+    Log("HTTP Response Code: " + String(httpResponseCode));
     
     http.end();
-    SendRemoteLogSimpleAPI("SendDataSimpleAPI FAILED - Response Code: " + String(httpResponseCode) + " - " + DataURLEncoded);
+    Log("SendDataSimpleAPI FAILED - Response Code: " + String(httpResponseCode) + " - " + DataURLEncoded, true);
     return false; 
   }
 }
 
 void SendRemoteLogSimpleAPI(String message) {
-  Serial.println("Send Remote Log:");
+  Log("Send Remote Log:");
   HTTPClient http;
   // SimpleAPI set values bulk
   String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/set/0_userdata.0.topolino.LastLogEntry?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
   String DataURLEncoded = "&value=";
   DataURLEncoded += urlEncode(message);
   DataURLEncoded += "&ack=true";
-  Serial.print("Data: ");
-  Serial.println(URL + DataURLEncoded); 
+  Log("URL: " + String(URL) + String(DataURLEncoded)); 
   http.begin(URL + DataURLEncoded);
   http.setTimeout(1 * 1000); // 1 second timeout
   http.setUserAgent("TopolinoInfoDisplay/1.0");
   int httpResponseCode = http.GET();
-  Serial.print("HTTP Response Code: ");
-  Serial.println(httpResponseCode);
+  Log("HTTP Response Code: " + String(httpResponseCode));
   http.end();
 }
 
-//TODO: Testing
 bool SendChargeInfoSimpleAPI() {
-  Serial.println("Send Charge Info Log:");
+  Log("Send Charge Info Log:");
   HTTPClient http;
   // SimpleAPI set values bulk
   String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
@@ -1011,29 +1000,27 @@ bool SendChargeInfoSimpleAPI() {
   DataURLEncoded += "&0_userdata.0.topolino.charge.endSoC=" + String(thisCharge.endSoC);
   DataURLEncoded += "&ack=true";
 
-  Serial.print("Data: ");
-  Serial.println(URL + DataURLEncoded); 
+  Log("URL: " + String(URL) + String(DataURLEncoded)); 
   http.begin(URL + DataURLEncoded);
   http.setTimeout(3 * 3000); // 3 second timeout
   http.setUserAgent("TopolinoInfoDisplay/1.0");
   int httpResponseCode = http.GET();
-  Serial.print("HTTP Response Code: ");
-  Serial.println(httpResponseCode);
+  Log("HTTP Response Code: " + String(httpResponseCode));
 
   if (httpResponseCode >= 200 && httpResponseCode <= 299) {
-    SendRemoteLogSimpleAPI("SendChargeInfosSimpleAPI OK");
+    Log("SendChargeInfosSimpleAPI OK");
     http.end();
     return true;
   }
   else {
-    SendRemoteLogSimpleAPI("SendChargeInfosSimpleAPI FAILED - Response Code: " + String(httpResponseCode) + " - " + DataURLEncoded);
+    Log("SendChargeInfosSimpleAPI FAILED - Response Code: " + String(httpResponseCode) + " - " + DataURLEncoded, true);
     http.end();
     return false;
   }
 }
 
 bool SendTripInfosSimpleAPI() {
-  Serial.println("Send Charge Info Log:");
+  Log("Send Charge Info Log:");
   HTTPClient http;
 
   float drivenKM = (thisTrip.endKM - thisTrip.startKM) / 10;
@@ -1042,7 +1029,7 @@ bool SendTripInfosSimpleAPI() {
   // SimpleAPI set values bulk
   String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
   String DataURLEncoded = "";
-  DataURLEncoded += "&0_userdata.0.topolino.trip.consumption=" + String((float)(thisTrip.endSoC - thisTrip.startSoC) * 0.06, 1);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.consumption=" + String((float)((thisTrip.endSoC - thisTrip.startSoC) * 0.06) * -1, 1);
   DataURLEncoded += "&0_userdata.0.topolino.trip.dauer=" + String((thisTrip.endTime - thisTrip.startTime) / 1000 / 60);
   DataURLEncoded += "&0_userdata.0.topolino.trip.km=" + String((thisTrip.endKM - thisTrip.startKM) / 10, 1);
   DataURLEncoded += "&0_userdata.0.topolino.trip.maxSpeed=" + String(thisTrip.maxSpeed, 0);
@@ -1050,44 +1037,42 @@ bool SendTripInfosSimpleAPI() {
   DataURLEncoded += "&0_userdata.0.topolino.trip.consumptionAvg=" + String((drivenSoC * 0.06) / drivenKM * 100,1);
   DataURLEncoded += "&ack=true";
 
-  Serial.print("Data: ");
-  Serial.println(URL + DataURLEncoded); 
+  Log("URL: " + String(URL) + String(DataURLEncoded)); 
   http.begin(URL + DataURLEncoded);
   http.setTimeout(3 * 3000); // 3 second timeout
   http.setUserAgent("TopolinoInfoDisplay/1.0");
   int httpResponseCode = http.GET();
-  Serial.print("HTTP Response Code: ");
-  Serial.println(httpResponseCode);
+  Log("HTTP Response Code: " + String(httpResponseCode));
 
   if (httpResponseCode >= 200 && httpResponseCode <= 299) {
-    SendRemoteLogSimpleAPI("SendTripInfosSimpleAPI OK");
+    Log("SendTripInfosSimpleAPI OK");
     http.end();
     return true;
   }
   else {
-    SendRemoteLogSimpleAPI("SendTripInfosSimpleAPI FAILED - Response Code: " + String(httpResponseCode) + " - " + DataURLEncoded);
+    Log("SendTripInfosSimpleAPI FAILED - Response Code: " + String(httpResponseCode) + " - " + DataURLEncoded, true);
     http.end();
     return false;
   }
 }
 
 void SerialPrintValues() {
-  Serial.println("Topolino Info Display - Values");
-  Serial.println("Can Messages Processed: " + String(CanMessagesProcessed));
-  Serial.println(" - ECU ODO: " + String(canValues.ODO / 10) + " km");
-  Serial.println(" - ECU Speed: " + String(canValues.Speed) + " km/h");
-  Serial.println(" - OBC Remaining Time: " + String(canValues.OBCRemainingMinutes) + " minutes");
-  Serial.println(" - 12V Battery: " + String(canValues.Battery) + " V");
-  Serial.println(" - Battery Temp1: " + String(canValues.Temp1) + " °C");
-  Serial.println(" - Battery Temp2: " + String(canValues.Temp2) + " °C");
-  Serial.println(" - Battery Volt: " + String(canValues.Volt) + " V");
-  Serial.println(" - Battery Current: " + String(canValues.Current) + " A");
-  Serial.println(" - Battery SoC: " + String(canValues.SoC) + " %");
-  Serial.println(" - Display Gear: " + String(canValues.Gear) );
-  Serial.println(" - Display Remaining Distance: " + String(canValues.RemainingDistance) + " km");
-  Serial.println(" - Display Ready: " + String(canValues.Ready) + " (1=Ready, 0=Not Ready, -1=Unknown)");
-  Serial.println(" - Status Handreake: " + String(canValues.Handbrake) + " (1=On, 0=Off, -1=Unknown)");
-  Serial.println("=============================");
+  Log("Topolino Info Display - Values");
+  Log("Can Messages Processed: " + String(CanMessagesProcessed));
+  Log(" - ECU ODO: " + String(canValues.ODO / 10) + " km");
+  Log(" - ECU Speed: " + String(canValues.Speed) + " km/h");
+  Log(" - OBC Remaining Time: " + String(canValues.OBCRemainingMinutes) + " minutes");
+  Log(" - 12V Battery: " + String(canValues.Battery) + " V");
+  Log(" - Battery Temp1: " + String(canValues.Temp1) + " °C");
+  Log(" - Battery Temp2: " + String(canValues.Temp2) + " °C");
+  Log(" - Battery Volt: " + String(canValues.Volt) + " V");
+  Log(" - Battery Current: " + String(canValues.Current) + " A");
+  Log(" - Battery SoC: " + String(canValues.SoC) + " %");
+  Log(" - Display Gear: " + String(canValues.Gear) );
+  Log(" - Display Remaining Distance: " + String(canValues.RemainingDistance) + " km");
+  Log(" - Display Ready: " + String(canValues.Ready) + " (1=Ready, 0=Not Ready, -1=Unknown)");
+  Log(" - Status Handreake: " + String(canValues.Handbrake) + " (1=On, 0=Off, -1=Unknown)");
+  Log("=============================");
 }
 
 void TripRecording() {
@@ -1103,7 +1088,7 @@ void TripRecording() {
 
 void SleepLightStart() {
   IsSleeping = true;
-  Serial.println("Going to light sleep...");
+  Log("Going to light sleep...");
   StatusIndicatorCAN = TFT_DARKGREY;
   StatusIndicatorStatus = TFT_DARKCYAN;
   StatusIndicatorTx = TFT_DARKGREY;
@@ -1168,13 +1153,14 @@ void SleepLightStart() {
   tft.setTextSize(1);
   tft.drawString("Tx", 135, 222);
   
-  SendRemoteLogSimpleAPI("Light Sleep");
+  Log("Light Sleep", true);
 }
 
 void SleepDeepStart() {
 
-  Serial.println("Going to Deep sleep...");
-  SendRemoteLogSimpleAPI("Deep Sleep");
+  Log("Going to Deep sleep...");
+  Log("Deep Sleep", true);
+  TelnetStream.stop();
   // Turn off display power
   digitalWrite(DISPLAY_POWER_PIN, LOW);
 
@@ -1207,3 +1193,12 @@ void DebugFakeValues() {
   canValues.Handbrake = 1;
 }
 
+void Log(String message, bool RemoteLog) {
+  Serial.println(message);
+  TelnetStream.println(message);
+  if (RemoteLog) {
+    SendRemoteLogSimpleAPI(message);
+  }
+}
+
+void Log(String message) { Log(message, false); }

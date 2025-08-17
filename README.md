@@ -45,6 +45,7 @@ Additional:
 - [TFT_sSPI](https://github.com/Bodmer/TFT_eSPI)
 - [ACAN2515](https://github.com/pierremolinaro/acan2515/)
 - [urlencode](https://github.com/plageoj/urlencode)
+- [TelnetStream](https://github.com/JAndrassy/TelnetStream)
 
 ## Configuration
 Rename ./config/config_example.h to config.h and fill the values
