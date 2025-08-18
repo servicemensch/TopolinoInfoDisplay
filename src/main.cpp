@@ -12,7 +12,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.83";
+const char VERSION[] = "0.85";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -94,6 +94,7 @@ const unsigned int TripRecordInterval = 1 * 1000;
 unsigned long TripRecordingLastRun = 0;
 unsigned long KeepAliveLastRun = 0;
 unsigned long ReversingLightLastRun = 0;
+unsigned long BTConnectLastRun = 0;
 
 // Deep Sleep Timeout
 #define DEEP_SLEEP_TIMEOUT 10 * 60 * 1000 // 10 minutes in milliseconds1
@@ -185,7 +186,6 @@ void setup() {
 
   // Show Welcome Screen
   DisplayBoot();
-  tft.fillScreen(COLOR_BACKGROUND);
 
   // Connect WIFI to enable OTA update at boot
   WIFIConnect();
@@ -194,7 +194,11 @@ void setup() {
   TelnetStream.begin();
 
   // Start Bluetooth
-  BTConnect(10000);
+  BT.begin("TopolinoInfoDisplayBT", true);
+  BTConnect(5000);
+
+  // Minimal Time for Boot Screen, may already used by BT Connect
+  while (millis() < 5000) { delay(100); }
   
   // Over The Air update config
   ArduinoOTA.setHostname("TopolinoInfoDisplayOTA");
@@ -203,6 +207,7 @@ void setup() {
   Log("TopolinoInfoDisplay started - Version: " + String(VERSION), true);
 
   digitalWrite(ONBOARD_LED, LOW);
+  tft.fillScreen(COLOR_BACKGROUND);
 
 #ifdef DEBUG
   // Debug
@@ -254,6 +259,13 @@ void loop() {
     StatusIndicatorCAN =  TFT_DARKGREY;
   }
 
+  // Check BT connection to Relais box
+  if (!BT.connected() && currentMillis - BTConnectLastRun > 10000) {
+      Log("BT Relais not connected!", true);
+      BTReconnectCounter++;
+      if (BTReconnectCounter <= 3) {if ( BTConnect(1000)) {BTReconnectCounter = 0;} }
+  }
+
   // Reversing Light
   if (currentMillis - ReversingLightLastRun >= 500) {
     ReversingLightLastRun = currentMillis;
@@ -265,12 +277,6 @@ void loop() {
         Log("Reversing Light OFF");
         BTSetRelais(1, false); // Turn off reversing light
       }
-    }
-    else
-    {
-      Log("Reversing lights not operational - Bluetooth not connected!");
-      BTReconnectCounter++;
-      if (BTReconnectCounter <= 3) {if (BTConnect(1000)) {BTReconnectCounter = 0;} }
     }
   }
 
@@ -666,7 +672,7 @@ void DisplayBoot() {
   tft.setTextColor(COLOR_TOPOLINO);
   tft.setTextSize(3);
   tft.drawCentreString("Topolino",120, 35, 1);
-  tft.setTextColor(TFT_DARKGREY);
+  tft.setTextColor(TFT_BLACK);
   delay(500);
   tft.drawString("Info",40,100);
   delay(500);
@@ -678,7 +684,6 @@ void DisplayBoot() {
   #ifdef DEBUG
     tft.drawCentreString("DEBUG", 120, 220, 1);
   #endif
-  delay(3000);
 }
 
 void DisplayMainUI() {
@@ -1188,6 +1193,7 @@ void SleepDeepStart() {
   Log("Deep Sleep", true);
   TelnetStream.stop();
   BTDisconnect();
+  
   // Turn off display power
   digitalWrite(DISPLAY_POWER_PIN, LOW);
 
@@ -1231,10 +1237,9 @@ void Log(String message, bool RemoteLog) {
 void Log(String message) { Log(message, false); }
 
 bool BTConnect(int timeout) {
-  BT.begin("TopolinoInfoDisplayBT", true);
   BT.setPin("1234");
-  BT.setTimeout(timeout); // 10 seconds BLOCKING !
-  Log("Bluetooth started");
+  BT.setTimeout(timeout); 
+  Log("Bluetooth started - Timeout: " + String(timeout) + " ms");
 
   #ifdef DEBUG
     BTScanResults* BTSCan = BT.discover(30 * 1280); // Discover devices for 30 seconds
@@ -1247,7 +1252,7 @@ bool BTConnect(int timeout) {
 
   if (BT.connect(BT_Slave_Name))
   {
-    Log("Bluetooth connected");
+    Log("Bluetooth connected", true);
     return true;
   }
   else {
@@ -1259,7 +1264,6 @@ bool BTConnect(int timeout) {
 void BTDisconnect() {
   Log("Bluetooth disconnect");
   BT.disconnect();
-  BT.end();
 }
 
 void BTSetRelais(int relais, bool state) {
