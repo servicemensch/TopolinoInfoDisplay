@@ -12,7 +12,7 @@
 
 #define DEBUG
 
-const char VERSION[] = "0.81";
+const char VERSION[] = "0.82";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -638,7 +638,7 @@ bool WIFIConnect(){
 
 bool WIFICheckConnection() { 
   if (WiFi.status () == WL_CONNECTED) {
-    Log("WIFI Connected! IP: " + String(WiFi.localIP()));
+    Log("WIFI Connected! IP: " + WiFi.localIP().toString());
     StatusIndicatorWIFI = TFT_GREEN;
     return true;
   }
@@ -958,12 +958,12 @@ bool SendDataSimpleAPI() {
   if (canValues.SpeedUp) { DataURLEncoded += "&0_userdata.0.topolino.speed=" + String(canValues.Speed); }
   DataURLEncoded += "&ack=true";
 
-  Log("URL: " + String(URL) + String(DataURLEncoded)); 
+  Log(" URL: " + String(URL) + String(DataURLEncoded)); 
   http.begin(URL + DataURLEncoded);
   http.setTimeout(3 * 1000); // 3 seconds timeout
   http.setUserAgent("TopolinoInfoDisplay/1.0");
   int httpResponseCode = http.GET();
-  Log("HTTP Response Code: " + String(httpResponseCode));
+  Log(" HTTP Response Code: " + String(httpResponseCode));
 
   if (httpResponseCode >= 200 && httpResponseCode <= 299) {
     StatusIndicatorTx = TFT_GREEN;
@@ -1004,12 +1004,12 @@ void SendRemoteLogSimpleAPI(String message) {
   String DataURLEncoded = "&value=";
   DataURLEncoded += urlEncode(message);
   DataURLEncoded += "&ack=true";
-  Log("URL: " + String(URL) + String(DataURLEncoded)); 
+  Log(" URL: " + String(URL) + String(DataURLEncoded)); 
   http.begin(URL + DataURLEncoded);
   http.setTimeout(1 * 1000); // 1 second timeout
   http.setUserAgent("TopolinoInfoDisplay/1.0");
   int httpResponseCode = http.GET();
-  Log("HTTP Response Code: " + String(httpResponseCode));
+  Log(" HTTP Response Code: " + String(httpResponseCode));
   http.end();
 }
 
@@ -1025,12 +1025,12 @@ bool SendChargeInfoSimpleAPI() {
   DataURLEncoded += "&0_userdata.0.topolino.charge.endSoC=" + String(thisCharge.endSoC);
   DataURLEncoded += "&ack=true";
 
-  Log("URL: " + String(URL) + String(DataURLEncoded)); 
+  Log(" URL: " + String(URL) + String(DataURLEncoded)); 
   http.begin(URL + DataURLEncoded);
   http.setTimeout(3 * 3000); // 3 second timeout
   http.setUserAgent("TopolinoInfoDisplay/1.0");
   int httpResponseCode = http.GET();
-  Log("HTTP Response Code: " + String(httpResponseCode));
+  Log(" HTTP Response Code: " + String(httpResponseCode));
 
   if (httpResponseCode >= 200 && httpResponseCode <= 299) {
     Log("SendChargeInfosSimpleAPI OK");
@@ -1062,12 +1062,12 @@ bool SendTripInfosSimpleAPI() {
   DataURLEncoded += "&0_userdata.0.topolino.trip.consumptionAvg=" + String((drivenSoC * 0.06) / drivenKM * 100,1);
   DataURLEncoded += "&ack=true";
 
-  Log("URL: " + String(URL) + String(DataURLEncoded)); 
+  Log(" URL: " + String(URL) + String(DataURLEncoded)); 
   http.begin(URL + DataURLEncoded);
   http.setTimeout(3 * 3000); // 3 second timeout
   http.setUserAgent("TopolinoInfoDisplay/1.0");
   int httpResponseCode = http.GET();
-  Log("HTTP Response Code: " + String(httpResponseCode));
+  Log(" HTTP Response Code: " + String(httpResponseCode));
 
   if (httpResponseCode >= 200 && httpResponseCode <= 299) {
     Log("SendTripInfosSimpleAPI OK");
