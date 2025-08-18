@@ -10,9 +10,9 @@
 #include <BluetoothSerial.h>
 #include <img.h>
 
-#define DEBUG
+//#define DEBUG
 
-const char VERSION[] = "0.82";
+const char VERSION[] = "0.83";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -100,6 +100,7 @@ unsigned long ReversingLightLastRun = 0;
 
 // Bluetooth relais module
 uint8_t BT_Slave_MAC[6] = {0x59, 0x95, 0xA4, 0x50, 0x71, 0x78}; // 59:95:A4:50:71:78
+String BT_Slave_Name = "JDY-33-SPP";
 
 // Globals
 int CanError = 0;
@@ -638,7 +639,7 @@ bool WIFIConnect(){
 
 bool WIFICheckConnection() { 
   if (WiFi.status () == WL_CONNECTED) {
-    Log("WIFI Connected! IP: " + WiFi.localIP().toString());
+    Log("WIFI Connected! IP: " + (WiFi.localIP().toString()));
     StatusIndicatorWIFI = TFT_GREEN;
     return true;
   }
@@ -1244,7 +1245,7 @@ bool BTConnect(int timeout) {
   }
   #endif
 
-  if (BT.connect(BT_Slave_MAC))
+  if (BT.connect(BT_Slave_Name))
   {
     Log("Bluetooth connected");
     return true;
