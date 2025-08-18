@@ -12,7 +12,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.85";
+const char VERSION[] = "0.86";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -261,6 +261,7 @@ void loop() {
 
   // Check BT connection to Relais box
   if (!BT.connected() && currentMillis - BTConnectLastRun > 10000) {
+      BTConnectLastRun = currentMillis;
       Log("BT Relais not connected!", true);
       BTReconnectCounter++;
       if (BTReconnectCounter <= 3) {if ( BTConnect(1000)) {BTReconnectCounter = 0;} }
@@ -271,11 +272,16 @@ void loop() {
     ReversingLightLastRun = currentMillis;
     if (BT.connected()) {
       if (canValues.Gear == "R") {
-        Log("Reversing Light ON");
         BTSetRelais(1, true); // Turn on reversing light
-      } else {
-        Log("Reversing Light OFF");
+        #ifdef DEBUG
+          Log("Reversing Light ON");
+        #endif
+      }
+      else {
         BTSetRelais(1, false); // Turn off reversing light
+        #ifdef DEBUG
+          Log("Reversing Light OFF");
+        #endif
       }
     }
   }
