@@ -12,7 +12,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.86";
+const char VERSION[] = "0.87";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -37,7 +37,7 @@ struct trip {
   unsigned long endTime;
   float startKM = 0;
   float endKM;
-  float maxSpeed = 0;
+  int maxSpeed = 0;
   int startSoC = 0;
   int endSoC = 0;
 };
@@ -119,6 +119,7 @@ unsigned long StatusIndicatorStatus = TFT_DARKGREY;
 unsigned long StatusIndicatorCAN = TFT_DARKGREY;
 unsigned long StatusIndicatorWIFI = TFT_DARKGREY;
 unsigned long StatusIndicatorTx = TFT_DARKGREY;
+unsigned long StatusIndicatorBT = TFT_DARKGREY;
 bool IsSleeping = false;
 bool IsCharging = false;
 unsigned int BTReconnectCounter = 0;
@@ -226,13 +227,12 @@ void loop() {
     KeepAliveLastRun = currentMillis;
     digitalWrite(ONBOARD_LED, !digitalRead(ONBOARD_LED));
 
-    if (StatusIndicatorStatus == TFT_WHITE || StatusIndicatorStatus == TFT_BLUE) {
+    if (StatusIndicatorStatus == TFT_WHITE) {
       if (TripActive) { StatusIndicatorStatus = TFT_YELLOW; }
       else { StatusIndicatorStatus = TFT_GREEN; }
     }
     else {
-      if (BT.connected()) { StatusIndicatorStatus = TFT_BLUE; }
-      else { StatusIndicatorStatus = TFT_WHITE; }
+      StatusIndicatorStatus = TFT_WHITE;
     }
   }
 
@@ -260,7 +260,7 @@ void loop() {
   }
 
   // Check BT connection to Relais box
-  if (!BT.connected() && currentMillis - BTConnectLastRun > 10000) {
+  if (!BT.connected() && currentMillis - BTConnectLastRun > 10000 && !IsSleeping && !IsCharging) { // Try to reconnect every 10 seconds
       BTConnectLastRun = currentMillis;
       Log("BT Relais not connected!", true);
       BTReconnectCounter++;
@@ -273,12 +273,16 @@ void loop() {
     if (BT.connected()) {
       if (canValues.Gear == "R") {
         BTSetRelais(1, true); // Turn on reversing light
+        StatusIndicatorBT = TFT_YELLOW;
+
         #ifdef DEBUG
           Log("Reversing Light ON");
         #endif
       }
       else {
         BTSetRelais(1, false); // Turn off reversing light
+        StatusIndicatorBT = TFT_GREEN;
+
         #ifdef DEBUG
           Log("Reversing Light OFF");
         #endif
@@ -307,14 +311,16 @@ void loop() {
   // Check current Trip has ended
   if (canValues.Ready == 0 && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
     TripActive = false;
-    TripDataToSend = true;
+    if (((thisTrip.endTime - thisTrip.startTime) / 1000 / 60) > 2) { // Datenübertragung nur Touren +ber 2 Minuten
+      TripDataToSend = true;
+    }
     
     // Show Trip results
     DisplayTripResults();
     //Send Data while showing Results
     ConnectWIFIAndSendData();
     
-    delay(20000); // Show Trip results for 15 seconds
+    delay(20000); // Show Trip results for 20 seconds
     tft.fillScreen(COLOR_BACKGROUND);
     DisplayMainUI();
   }
@@ -334,6 +340,7 @@ void loop() {
     thisCharge.endSoC = canValues.SoC;
     thisCharge.endTime = currentMillis;
     ChargeDataToSend = true;
+    BTReconnectCounter = 0;
     Log("Charging has ended", true);
 
     // Show Charge end screen
@@ -379,6 +386,7 @@ void loop() {
   // Sleep modes
   if ((currentMillis - CanMessagesLastRecived) > (DEEP_SLEEP_TIMEOUT / 2) && !IsSleeping) {  
     SleepLightStart();
+    BTReconnectCounter = 0;
   }
   if ((currentMillis - CanMessagesLastRecived) > DEEP_SLEEP_TIMEOUT) {  
     SleepDeepStart();
@@ -578,6 +586,7 @@ void CANCheckMessage(){
           //Ready indicator
           switch ((canMsg.data[2] & 0b00000111)) { // Check the last 3 bits
             case 0b101:
+              if (canValues.Ready != 1) { BTReconnectCounter = 0 ; } // Reset BT Reconnect tries when car becomes ready to fore recoennection
               canValues.Ready = 1; // Ready
               break;
             case 0b11:
@@ -678,7 +687,7 @@ void DisplayBoot() {
   tft.setTextColor(COLOR_TOPOLINO);
   tft.setTextSize(3);
   tft.drawCentreString("Topolino",120, 35, 1);
-  tft.setTextColor(TFT_BLACK);
+  tft.setTextColor(TFT_LIGHTGREY);
   delay(500);
   tft.drawString("Info",40,100);
   delay(500);
@@ -790,23 +799,29 @@ void DisplayMainUI() {
   tft.setTextSize(1);
   tft.drawString("Status", 73, 197);
 
-  // CAN Indicator
-  tft.drawRoundRect(80, 215, 38, 20, 8, COLOR_ALMOSTBLACK);
-  tft.setTextColor(StatusIndicatorCAN);
-  tft.setTextSize(1);
-  tft.drawString("CAN", 90, 222);
-
   // WIFI Indicator
   tft.drawRoundRect(122, 190, 55, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorWIFI); 
   tft.setTextSize(1);
   tft.drawString("WIFI", 138, 197);
 
+  // BT Indicator
+  tft.drawRoundRect(76, 215, 25, 20, 8, COLOR_ALMOSTBLACK);
+  tft.setTextColor(StatusIndicatorBT);
+  tft.setTextSize(1);
+  tft.drawString("BT", 142, 222);
+
+  // CAN Indicator
+  tft.drawRoundRect(105, 215, 30, 20, 8, COLOR_ALMOSTBLACK);
+  tft.setTextColor(StatusIndicatorCAN);
+  tft.setTextSize(1);
+  tft.drawString("CAN", 110, 222);
+
   // Tx Indicator
-  tft.drawRoundRect(122, 215, 38, 20, 8, COLOR_ALMOSTBLACK);
+  tft.drawRoundRect(139, 215, 25, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorTx);
   tft.setTextSize(1);
-  tft.drawString("Tx", 135, 222);
+  tft.drawString("Tx", 142, 222);
 }
 
 void DisplayTripResults() {
@@ -1245,7 +1260,7 @@ void Log(String message) { Log(message, false); }
 bool BTConnect(int timeout) {
   BT.setPin("1234");
   BT.setTimeout(timeout); 
-  Log("Bluetooth started - Timeout: " + String(timeout) + " ms");
+  Log("Bluetooth started - Timeout: " + String(timeout) + " ms", true);
 
   #ifdef DEBUG
     BTScanResults* BTSCan = BT.discover(30 * 1280); // Discover devices for 30 seconds
@@ -1258,17 +1273,20 @@ bool BTConnect(int timeout) {
 
   if (BT.connect(BT_Slave_Name))
   {
-    Log("Bluetooth connected", true);
+    Log("Bluetooth connect OK", true);
+    StatusIndicatorBT = TFT_GREEN;
     return true;
   }
   else {
-    Log("Bluetooth NOT connected!", true);
+    Log("Bluetooth connect FAILED!", true);
+    StatusIndicatorBT = TFT_RED;
     return false;
   }
 }
 
 void BTDisconnect() {
   Log("Bluetooth disconnect");
+  StatusIndicatorBT = TFT_DARKGREY;
   BT.disconnect();
 }
 
