@@ -12,7 +12,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.87";
+const char VERSION[] = "0.88";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -194,6 +194,8 @@ void setup() {
   // Start Telnet stream for remote logging
   TelnetStream.begin();
 
+  Log("TopolinoInfoDisplay started - Version: " + String(VERSION), true);
+  
   // Start Bluetooth
   BT.begin("TopolinoInfoDisplayBT", true);
   BTConnect(5000);
@@ -204,8 +206,6 @@ void setup() {
   // Over The Air update config
   ArduinoOTA.setHostname("TopolinoInfoDisplayOTA");
   ArduinoOTA.begin();
-  
-  Log("TopolinoInfoDisplay started - Version: " + String(VERSION), true);
 
   digitalWrite(ONBOARD_LED, LOW);
   tft.fillScreen(COLOR_BACKGROUND);
@@ -763,19 +763,36 @@ void DisplayMainUI() {
   tft.fillRect(24, 142, 45, 20, COLOR_BACKGROUND); // Reset background
   tft.drawString(String(tempAverage,1)+ "C", 25, 143, 2); 
 
+  String righArcString
+  if ( TripActive ) {
+    // consumption per 100km
+    float drivenKM = (thisTrip.endKM - thisTrip.startKM) / 10;
+    int drivenSoC = thisTrip.startSoC - thisTrip.endSoC;
+    float cunsumption100km = drivenSoC * 0.06) / drivenKM * 100;
+    rightArcString = String(cunsumption100km, 1) + "kW";
+    arcLenght = map(cunsumption100km, 6, 12, 0, 45);
+    if ( cunsumption100km > 12) { valuecolor = TFT_RED; }
+    else if ( cunsumption100km > 10) { valuecolor = TFT_ORANGE; }
+    else if ( cunsumption100km > 9) { valuecolor = TFT_YELLOW; }
+    else if ( cunsumption100km < 7.5) { valuecolor = TFT_CYAN; }
+    else { valuecolor = 0x2520; }
+  }
+  else {
   // 12Volt Battery
-  arcLenght = map(canValues.Battery, 11.5, 14.5, 0, 45); 
+    rightArcString = String(canValues.Battery, 1) + "V";
+    arcLenght = map(canValues.Battery, 11.5, 14.5, 0, 45); 
+    if (canValues.Battery < 11.5) { valuecolor = TFT_RED; }
+    else if (canValues.Battery < 12.0) { valuecolor = TFT_YELLOW; }
+    else { valuecolor = 0x2520; }
+  }
   if (arcLenght < 1) {arcLenght = 1;}
   if (arcLenght > 45) {arcLenght = 45;}
-  if (canValues.Battery < 11.5) { valuecolor = TFT_RED; }
-  else if (canValues.Battery < 12.0) { valuecolor = TFT_YELLOW; }
-  else { valuecolor = 0x2520; }
   tft.setTextSize(1);
   tft.setTextColor(valuecolor);
   tft.drawSmoothArc(120,120, 121, 110, 270, 315, COLOR_GREY, COLOR_BACKGROUND, true); // reset
   tft.drawSmoothArc(120,120, 121, 110, 315 - arcLenght, 315, valuecolor, COLOR_BACKGROUND, true); // value
   tft.fillRect(179, 142, 40, 18, COLOR_BACKGROUND); //Reset text background
-  tft.drawString(String(canValues.Battery, 1) + "V", 180, 143, 2); 
+  tft.drawString(rightArcString, 180, 143, 2); 
 
   //Akku Voltage
   tft.fillSmoothRoundRect(85, 130, 70, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
@@ -809,7 +826,7 @@ void DisplayMainUI() {
   tft.drawRoundRect(76, 215, 25, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorBT);
   tft.setTextSize(1);
-  tft.drawString("BT", 142, 222);
+  tft.drawString("BT", 79, 222);
 
   // CAN Indicator
   tft.drawRoundRect(105, 215, 30, 20, 8, COLOR_ALMOSTBLACK);
@@ -970,7 +987,7 @@ bool SendDataSimpleAPI() {
   String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
 
   String DataURLEncoded = "";
-  DataURLEncoded += "&0_userdata.0.topolino.SoC=" + String(canValues.SoC);
+  if (canValues.SoCUp) {DataURLEncoded += "&0_userdata.0.topolino.SoC=" + String(canValues.SoC); }
   if (canValues.BatteryUp) {DataURLEncoded += "&0_userdata.0.topolino.12VBatt=" + String(canValues.Battery); }
   if (canValues.CurrentUp) { DataURLEncoded += "&0_userdata.0.topolino.BattA=" + String(canValues.Current); }
   if (canValues.Temp1Up) { DataURLEncoded += "&0_userdata.0.topolino.BattTemp1=" + String(canValues.Temp1); }
@@ -1010,7 +1027,7 @@ bool SendDataSimpleAPI() {
     canValues.SpeedUp = false;
 
     http.end();
-    Log("SendDataSimpleAPI OK");
+    Log("SendDataSimpleAPI OK", true);
     return true; 
   }
   else {
@@ -1060,7 +1077,7 @@ bool SendChargeInfoSimpleAPI() {
   Log(" HTTP Response Code: " + String(httpResponseCode));
 
   if (httpResponseCode >= 200 && httpResponseCode <= 299) {
-    Log("SendChargeInfosSimpleAPI OK");
+    Log("SendChargeInfosSimpleAPI OK", true);
     http.end();
     return true;
   }
@@ -1097,7 +1114,7 @@ bool SendTripInfosSimpleAPI() {
   Log(" HTTP Response Code: " + String(httpResponseCode));
 
   if (httpResponseCode >= 200 && httpResponseCode <= 299) {
-    Log("SendTripInfosSimpleAPI OK");
+    Log("SendTripInfosSimpleAPI OK", true);
     http.end();
     return true;
   }
