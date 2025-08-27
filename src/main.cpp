@@ -260,7 +260,7 @@ void loop() {
   }
 
   // Check BT connection to Relais box
-  if (!BT.connected() && currentMillis - BTConnectLastRun > 10000 && !IsSleeping && !IsCharging) { // Try to reconnect every 10 seconds
+  if (!BT.connected() && currentMillis - BTConnectLastRun > 10000 && canValues.Ready == 1) { // Try to reconnect every 10 seconds
       BTConnectLastRun = currentMillis;
       Log("BT Relais not connected!", true);
       BTReconnectCounter++;
@@ -686,8 +686,8 @@ void DisplayBoot() {
   delay(500);
   tft.setTextColor(COLOR_TOPOLINO);
   tft.setTextSize(3);
-  tft.drawCentreString("Topolino",120, 35, 1);
-  tft.setTextColor(TFT_LIGHTGREY);
+  tft.drawCentreString("Topolino",120, 32, 1);
+  tft.setTextColor(COLOR_ALMOSTBLACK);
   delay(500);
   tft.drawString("Info",40,100);
   delay(500);
@@ -763,12 +763,12 @@ void DisplayMainUI() {
   tft.fillRect(24, 142, 45, 20, COLOR_BACKGROUND); // Reset background
   tft.drawString(String(tempAverage,1)+ "C", 25, 143, 2); 
 
-  String righArcString
+  String rightArcString;
   if ( TripActive ) {
     // consumption per 100km
     float drivenKM = (thisTrip.endKM - thisTrip.startKM) / 10;
     int drivenSoC = thisTrip.startSoC - thisTrip.endSoC;
-    float cunsumption100km = drivenSoC * 0.06) / drivenKM * 100;
+    float cunsumption100km = (drivenSoC * 0.06) / drivenKM * 100;
     rightArcString = String(cunsumption100km, 1) + "kW";
     arcLenght = map(cunsumption100km, 6, 12, 0, 45);
     if ( cunsumption100km > 12) { valuecolor = TFT_RED; }
@@ -811,8 +811,8 @@ void DisplayMainUI() {
   tft.drawCentreString(String(canValues.SoC) + "%", 120, 40, 1);
 
   // Status Indicator
-  tft.drawRoundRect(63, 190, 55, 20, 8, COLOR_ALMOSTBLACK);
-  tft.setTextColor(StatusIndicatorStatus);
+  tft.drawRoundRect(63, 190, 55, 20, 8, StatusIndicatorStatus);
+  tft.setTextColor(COLOR_ALMOSTBLACK);
   tft.setTextSize(1);
   tft.drawString("Status", 73, 197);
 
