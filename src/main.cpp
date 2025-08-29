@@ -12,7 +12,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.88";
+const char VERSION[] = "0.90";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -25,7 +25,7 @@ const char VERSION[] = "0.88";
 #define CAN_500Kbs 500UL * 1000UL
 #define ONBOARD_LED 2
 
-#define COLOR_ALMOSTBLACK 0x31a6
+#define COLOR_ALMOSTBLACK 0x436c
 #define COLOR_BACKGROUND 0x2104
 #define COLOR_BG_GREEN 0x0140
 #define COLOR_BG_RED 0x3000
@@ -97,7 +97,7 @@ unsigned long ReversingLightLastRun = 0;
 unsigned long BTConnectLastRun = 0;
 
 // Deep Sleep Timeout
-#define DEEP_SLEEP_TIMEOUT 10 * 60 * 1000 // 10 minutes in milliseconds1
+#define DEEP_SLEEP_TIMEOUT 15 * 60 * 1000 // 15 minutes in milliseconds1
 
 // Bluetooth relais module
 uint8_t BT_Slave_MAC[6] = {0x59, 0x95, 0xA4, 0x50, 0x71, 0x78}; // 59:95:A4:50:71:78
@@ -198,7 +198,7 @@ void setup() {
   
   // Start Bluetooth
   BT.begin("TopolinoInfoDisplayBT", true);
-  BTConnect(5000);
+  //BTConnect(5000);
 
   // Minimal Time for Boot Screen, may already used by BT Connect
   while (millis() < 5000) { delay(100); }
@@ -417,7 +417,7 @@ void CanConnect () {
   };
 
   // CAN Module
-  StatusIndicatorCAN = TFT_BLUE;
+  StatusIndicatorCAN = TFT_CYAN;
   hspi.begin(CAN_SCK, CAN_MISO, CAN_MOSI);
   ACAN2515Settings CanSettings (CAN_8MHz, CAN_500Kbs);
   CanSettings.mRequestedMode = ACAN2515Settings::ListenOnlyMode ;
@@ -459,7 +459,7 @@ void CANCheckMessage(){
       switch (canMsg.id) {
         // Electronic control Unit (ECU)
         case 0x581: { 
-          StatusIndicatorCAN = TFT_BLUE;
+          DataToSend = true;
           if (!canMsg.len == 8) {Log("CAN: Wrong Lenght"); break;}
           // Odo
           unsigned int value1 = canMsg.data[6] << 16 | canMsg.data[5] << 8 | canMsg.data[4];
@@ -477,7 +477,7 @@ void CANCheckMessage(){
 
         // Onboard Charger
         case 0x582: { 
-          StatusIndicatorCAN = TFT_BLUE;
+          DataToSend = true;
           if (!canMsg.len == 8) {Log("CAN: Wrong Lenght"); break;}
           
           // Remaining Time
@@ -491,7 +491,7 @@ void CANCheckMessage(){
 
         // 12V Battery
         case 0x593: {
-          StatusIndicatorCAN = TFT_BLUE;
+          DataToSend = true;
           if (!canMsg.len == 8) {Log("CAN: Wrong Lenght"); break;}
           unsigned int value = (canMsg.data[1] << 8) | canMsg.data[0];
           //Log("- CAN Value 12V: " + String(value));
@@ -502,7 +502,7 @@ void CANCheckMessage(){
 
         // Main Battery Temperature
         case 0x594: {
-          StatusIndicatorCAN = TFT_BLUE;
+          DataToSend = true;
           if (!canMsg.len == 8) {Log("CAN: Wrong Lenght"); break;}
           
           // Temp 1
@@ -521,7 +521,7 @@ void CANCheckMessage(){
         
         // Main Battery Voltage and Current
         case 0x580: {
-          StatusIndicatorCAN = TFT_BLUE;
+          DataToSend = true;StatusIndicatorCAN = TFT_BLUE;
           if (!canMsg.len == 8) {Log("CAN: Wrong Lenght"); break;}
 
           // Current
@@ -551,7 +551,7 @@ void CANCheckMessage(){
 
         // Display
         case 0x713: {
-          StatusIndicatorCAN = TFT_BLUE;
+          DataToSend = true;
           if (!canMsg.len == 7) {Log("CAN: Wrong Lenght"); break;}
           //Log("CAN: Display Message Data:" + String(canMsg.data[0],HEX) + " " + String(canMsg.data[1],HEX) + " " + String(canMsg.data[2],HEX) + " " + String(canMsg.data[3],HEX) + " " + String(canMsg.data[4],HEX) + " " + String(canMsg.data[5],HEX) + " " + String(canMsg.data[6],HEX));
 
@@ -603,7 +603,7 @@ void CANCheckMessage(){
 
         // Handbreak
         case 0x714: {
-          StatusIndicatorCAN = TFT_BLUE;
+          DataToSend = true;
           //Log("CAN:  Handbreak");
           if (!canMsg.len == 2) {Log("CAN: Wrong Lenght"); break;}
 
@@ -623,7 +623,7 @@ void CANCheckMessage(){
 
           break;
         }
-        if (StatusIndicatorCAN == TFT_BLUE) {DataToSend = true; StatusIndicatorTx = TFT_YELLOW; } // knonw CAN message has changed values
+        if (DataToSend == true) {StatusIndicatorTx = TFT_YELLOW; } // knonw CAN message has changed values
       }
     else {
       // unknow CAN Message
@@ -687,7 +687,7 @@ void DisplayBoot() {
   tft.setTextColor(COLOR_TOPOLINO);
   tft.setTextSize(3);
   tft.drawCentreString("Topolino",120, 32, 1);
-  tft.setTextColor(COLOR_ALMOSTBLACK);
+  tft.setTextColor(COLOR_ALMOSTBLACK, COLOR_TOPOLINO, true);
   delay(500);
   tft.drawString("Info",40,100);
   delay(500);
@@ -791,8 +791,8 @@ void DisplayMainUI() {
   tft.setTextColor(valuecolor);
   tft.drawSmoothArc(120,120, 121, 110, 270, 315, COLOR_GREY, COLOR_BACKGROUND, true); // reset
   tft.drawSmoothArc(120,120, 121, 110, 315 - arcLenght, 315, valuecolor, COLOR_BACKGROUND, true); // value
-  tft.fillRect(179, 142, 40, 18, COLOR_BACKGROUND); //Reset text background
-  tft.drawString(rightArcString, 180, 143, 2); 
+  tft.fillRect(172, 142, 50, 18, COLOR_BACKGROUND); //Reset text background
+  tft.drawRightString(rightArcString, 220, 143, 2); 
 
   //Akku Voltage
   tft.fillSmoothRoundRect(85, 130, 70, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
@@ -811,7 +811,7 @@ void DisplayMainUI() {
   tft.drawCentreString(String(canValues.SoC) + "%", 120, 40, 1);
 
   // Status Indicator
-  tft.drawRoundRect(63, 190, 55, 20, 8, StatusIndicatorStatus);
+  tft.fillRoundRect(63, 190, 55, 20, 8, StatusIndicatorStatus);
   tft.setTextColor(COLOR_ALMOSTBLACK);
   tft.setTextSize(1);
   tft.drawString("Status", 73, 197);
@@ -826,19 +826,19 @@ void DisplayMainUI() {
   tft.drawRoundRect(76, 215, 25, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorBT);
   tft.setTextSize(1);
-  tft.drawString("BT", 79, 222);
+  tft.drawString("BT", 82, 222);
 
   // CAN Indicator
   tft.drawRoundRect(105, 215, 30, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorCAN);
   tft.setTextSize(1);
-  tft.drawString("CAN", 110, 222);
+  tft.drawString("CAN", 112, 222);
 
   // Tx Indicator
   tft.drawRoundRect(139, 215, 25, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorTx);
   tft.setTextSize(1);
-  tft.drawString("Tx", 142, 222);
+  tft.drawString("Tx", 145, 222);
 }
 
 void DisplayTripResults() {
@@ -873,7 +873,7 @@ void DisplayTripResults() {
   tft.drawString("km/h", positionX +10 , positionY +1, 2);
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(2);
-  tft.drawString(String((drivenKM / drivenMin) * 60, 1) + "   | " + String(thisTrip.maxSpeed, 0), positionX +10, positionY +19);
+  tft.drawString(String((drivenKM / drivenMin) * 60, 1) + "   | " + String(thisTrip.maxSpeed), positionX +10, positionY +19);
   tft.drawSmoothCircle(positionX +75, positionY +25, 7, TFT_WHITE, COLOR_BACKGROUND);
   tft.drawLine(positionX +67, positionY +32, positionX +83, positionY +18, TFT_WHITE);
   tft.fillTriangle(positionX +155, positionY +33, positionX +175, positionY +33, positionX +175, positionY +22, TFT_WHITE);
@@ -1101,7 +1101,7 @@ bool SendTripInfosSimpleAPI() {
   DataURLEncoded += "&0_userdata.0.topolino.trip.consumption=" + String((float)((thisTrip.endSoC - thisTrip.startSoC) * 0.06) * -1, 1);
   DataURLEncoded += "&0_userdata.0.topolino.trip.dauer=" + String((thisTrip.endTime - thisTrip.startTime) / 1000 / 60);
   DataURLEncoded += "&0_userdata.0.topolino.trip.km=" + String((thisTrip.endKM - thisTrip.startKM) / 10, 1);
-  DataURLEncoded += "&0_userdata.0.topolino.trip.maxSpeed=" + String(thisTrip.maxSpeed, 0);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.maxSpeed=" + String(thisTrip.maxSpeed);
   DataURLEncoded += "&0_userdata.0.topolino.trip.SpeedAvg=" + String((drivenKM / drivenMin) * 60, 1);
   DataURLEncoded += "&0_userdata.0.topolino.trip.consumptionAvg=" + String((drivenSoC * 0.06) / drivenKM * 100,1);
   DataURLEncoded += "&ack=true";
@@ -1309,7 +1309,7 @@ void BTDisconnect() {
 
 void BTSetRelais(int relais, bool state) {
   //Check inpout
-  if (relais < 1 || relais > 2) {
+  if (relais != 1 && relais != 2) {
     Log("BTSetRelais: Invalid relais number: " + String(relais));
     return;
   }
