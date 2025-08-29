@@ -12,7 +12,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.92";
+const char VERSION[] = "0.94b";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -123,6 +123,7 @@ unsigned long StatusIndicatorBT = TFT_DARKGREY;
 bool IsSleeping = false;
 bool IsCharging = false;
 unsigned int BTReconnectCounter = 0;
+bool BTisStarted = false;
 
 // put function declarations here:
 void CanConnect();
@@ -193,22 +194,23 @@ void setup() {
 
   // Start Telnet stream for remote logging
   TelnetStream.begin();
-
-  Log("TopolinoInfoDisplay started - Version: " + String(VERSION), true);
-
-  // Minimal Time for Boot Screen, may already used by BT Connect
-  while (millis() < 3000) { delay(100); }
-  
+ 
   // Over The Air update config
   ArduinoOTA.setHostname("TopolinoInfoDisplayOTA");
   ArduinoOTA.begin();
 
+  // Minimal Time for Boot Screen
+  while (millis() < 3000) { delay(100); }
+
+  // Setup sequence finished
+  Log("TopolinoInfoDisplay started - Version: " + String(VERSION), true);
   digitalWrite(ONBOARD_LED, LOW);
   tft.fillScreen(COLOR_BACKGROUND);
 
 #ifdef DEBUG
   // Debug
 #endif
+
 }
 
 // =====================================================================================================
@@ -256,19 +258,26 @@ void loop() {
   }
 
   // Check BT connection to Relais box
-  if (!BT.connected() && currentMillis - BTConnectLastRun > 30000 && canValues.Ready == 1) { // Try to reconnect every 10 seconds
-      BTConnectLastRun = currentMillis;
-      Log("BT Relais not connected! Reconnect Count: " + String(BTReconnectCounter), true);
-      BTReconnectCounter++;
-      if (BTReconnectCounter <= 2) {if ( BTConnect(1000)) {BTReconnectCounter = 0;} }
-  }
-  else if (BT.connected() && canValues.Ready != 1)
-  {
-      BTDisconnect();
+  if (currentMillis - BTConnectLastRun > 30000 && canValues.Ready == 1) { // Try to reconnect every 30 seconds
+    BTConnectLastRun = currentMillis;
+    if (BTisStarted) {
+      if (!BT.connected()) {
+        Log("BT Relais not connected! Reconnect Count: " + String(BTReconnectCounter), true);
+        BTReconnectCounter++;
+        if (BTReconnectCounter <= 2) {if ( BTConnect(1000)) {BTReconnectCounter = 0;} }
+      }
+      else if (BT.connected() && canValues.Ready != 1)
+      {
+        BTDisconnect();
+      }
+    }
+    else {
+      BTConnect(10000);
+    }
   }
 
   // Reversing Light
-  if (currentMillis - ReversingLightLastRun >= 500) {
+  if (currentMillis - ReversingLightLastRun >= 500 && BTisStarted) {
     ReversingLightLastRun = currentMillis;
     if (BT.connected()) {
       if (canValues.Gear == "R") {
@@ -687,7 +696,7 @@ void DisplayBoot() {
   tft.setTextColor(COLOR_TOPOLINO);
   tft.setTextSize(3);
   tft.drawCentreString("Topolino",120, 32, 1);
-  tft.setTextColor(COLOR_ALMOSTBLACK, COLOR_TOPOLINO, true);
+  tft.setTextColor(TFT_BLACK, COLOR_TOPOLINO, true);
   delay(500);
   tft.drawString("Info",40,100);
   delay(500);
@@ -695,7 +704,7 @@ void DisplayBoot() {
   delay(500);
   tft.setTextSize(2);
   tft.setTextColor(COLOR_ALMOSTBLACK);
-  tft.drawString("Version: " + String(VERSION), 40, 185);
+  tft.drawCentreString("Version: " + String(VERSION), 120, 185, 1);
   #ifdef DEBUG
     tft.drawCentreString("DEBUG", 120, 220, 1);
   #endif
@@ -728,7 +737,7 @@ void DisplayMainUI() {
   }
   else {
     // No Consumption (Dead zone 0 bis -2)
-    tft.drawSmoothArc(120,120, 118, 107, 149, 150, COLOR_TOPOLINO, COLOR_BACKGROUND, true);
+    tft.drawSpot(61, 24, 6, COLOR_TOPOLINO, COLOR_BACKGROUND);
   }
   
   // Consumption value  
@@ -811,34 +820,44 @@ void DisplayMainUI() {
   tft.drawCentreString(String(canValues.SoC) + "%", 120, 40, 1);
 
   // Status Indicator
-  tft.fillRoundRect(63, 190, 55, 20, 8, StatusIndicatorStatus);
+  tft.fillRoundRect(63, 188, 55, 20, 8, StatusIndicatorStatus);
   tft.setTextColor(COLOR_ALMOSTBLACK);
   tft.setTextSize(1);
-  tft.drawString("Status", 73, 197);
+  tft.drawString("Status", 73, 195);
 
   // WIFI Indicator
-  tft.drawRoundRect(122, 190, 55, 20, 8, COLOR_ALMOSTBLACK);
+  tft.drawRoundRect(122, 188, 55, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorWIFI); 
   tft.setTextSize(1);
-  tft.drawString("WIFI", 138, 197);
+  tft.drawString("WIFI", 139, 195);
 
   // BT Indicator
-  tft.drawRoundRect(76, 215, 25, 20, 8, COLOR_ALMOSTBLACK);
-  tft.setTextColor(StatusIndicatorBT);
+  unsigned long BTBackground;
+  unsigned long BTText;
+  if (StatusIndicatorBT == TFT_YELLOW) {
+    BTBackground = TFT_YELLOW;
+    BTText = TFT_BLACK;
+  }
+  else {
+    BTBackground = COLOR_ALMOSTBLACK;
+    BTText = StatusIndicatorBT;
+  }
+  tft.drawRoundRect(76, 213, 25, 20, 8, BTBackground);
+  tft.setTextColor(BTText);
   tft.setTextSize(1);
-  tft.drawString("BT", 82, 222);
+  tft.drawString("BT", 83, 219);
 
   // CAN Indicator
-  tft.drawRoundRect(105, 215, 30, 20, 8, COLOR_ALMOSTBLACK);
+  tft.drawRoundRect(105, 213, 30, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorCAN);
   tft.setTextSize(1);
-  tft.drawString("CAN", 112, 222);
+  tft.drawString("CAN", 111, 219);
 
   // Tx Indicator
-  tft.drawRoundRect(139, 215, 25, 20, 8, COLOR_ALMOSTBLACK);
+  tft.drawRoundRect(139, 213, 25, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorTx);
   tft.setTextSize(1);
-  tft.drawString("Tx", 145, 222);
+  tft.drawString("Tx", 146, 219);
 }
 
 void DisplayTripResults() {
@@ -1204,23 +1223,23 @@ void SleepLightStart() {
   }
   while ( SendDataSimpleAPI() == false && i < 5);
 
-
   tft.fillScreen(TFT_BLACK);
   tft.setTextSize(3);
   tft.setTextColor(COLOR_TOPOLINO);
-  tft.drawString("Sleeping...", 30, 120);
+  tft.drawCentreString("Topolino is", 120, 100, 1);
+  tft.drawCentreString("sleeping...", 120, 125, 1);
 
   // WIFI Indicator
-  tft.drawRoundRect(122, 190, 55, 20, 8, COLOR_ALMOSTBLACK);
-  tft.setTextColor(StatusIndicatorWIFI); 
+  tft.drawRoundRect(122, 188, 55, 20, 8, StatusIndicatorWIFI);
+  tft.setTextColor(TFT_BLACK); 
   tft.setTextSize(1);
-  tft.drawString("WIFI", 138, 197);
+  tft.drawString("WIFI", 139, 195);
 
   // Tx Indicator
-  tft.drawRoundRect(122, 215, 38, 20, 8, COLOR_ALMOSTBLACK);
-  tft.setTextColor(StatusIndicatorTx);
+  tft.drawRoundRect(139, 213, 25, 20, 8, StatusIndicatorTx);
+  tft.setTextColor(TFT_BLACK);
   tft.setTextSize(1);
-  tft.drawString("Tx", 135, 222);
+  tft.drawString("Tx", 146, 219);
   
   Log("Light Sleep", true);
 }
@@ -1275,11 +1294,13 @@ void Log(String message, bool RemoteLog) {
 void Log(String message) { Log(message, false); }
 
 bool BTConnect(int timeout) {
+  BTisStarted = false;
   BT.disconnect();
   BT.clearWriteError();
   BT.flush();
   BT.unpairDevice(BT_Slave_MAC);
   BT.begin("TopolinoInfoDisplayBT", true);
+  BTisStarted = true;
   BT.setPin("1234");
   BT.setTimeout(timeout); 
   String msg = "BT Connect - Status --> Connected: " + String(BT.connected()) + " Timeout: " + String(BT.getTimeout()) + " isClosed: " + String(BT.isClosed()) + " isReady: " + String(BT.isReady());
@@ -1310,6 +1331,7 @@ bool BTConnect(int timeout) {
 void BTDisconnect() {
   Log("Bluetooth disconnect");
   StatusIndicatorBT = TFT_DARKGREY;
+  BTisStarted = false;
   BT.disconnect();
   BT.end(); 
 }
