@@ -12,7 +12,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.90";
+const char VERSION[] = "0.92";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -195,13 +195,9 @@ void setup() {
   TelnetStream.begin();
 
   Log("TopolinoInfoDisplay started - Version: " + String(VERSION), true);
-  
-  // Start Bluetooth
-  BT.begin("TopolinoInfoDisplayBT", true);
-  //BTConnect(5000);
 
   // Minimal Time for Boot Screen, may already used by BT Connect
-  while (millis() < 5000) { delay(100); }
+  while (millis() < 3000) { delay(100); }
   
   // Over The Air update config
   ArduinoOTA.setHostname("TopolinoInfoDisplayOTA");
@@ -260,11 +256,15 @@ void loop() {
   }
 
   // Check BT connection to Relais box
-  if (!BT.connected() && currentMillis - BTConnectLastRun > 10000 && canValues.Ready == 1) { // Try to reconnect every 10 seconds
+  if (!BT.connected() && currentMillis - BTConnectLastRun > 30000 && canValues.Ready == 1) { // Try to reconnect every 10 seconds
       BTConnectLastRun = currentMillis;
-      Log("BT Relais not connected!", true);
+      Log("BT Relais not connected! Reconnect Count: " + String(BTReconnectCounter), true);
       BTReconnectCounter++;
-      if (BTReconnectCounter <= 3) {if ( BTConnect(1000)) {BTReconnectCounter = 0;} }
+      if (BTReconnectCounter <= 2) {if ( BTConnect(1000)) {BTReconnectCounter = 0;} }
+  }
+  else if (BT.connected() && canValues.Ready != 1)
+  {
+      BTDisconnect();
   }
 
   // Reversing Light
@@ -1275,10 +1275,16 @@ void Log(String message, bool RemoteLog) {
 void Log(String message) { Log(message, false); }
 
 bool BTConnect(int timeout) {
+  BT.disconnect();
+  BT.clearWriteError();
+  BT.flush();
+  BT.unpairDevice(BT_Slave_MAC);
+  BT.begin("TopolinoInfoDisplayBT", true);
   BT.setPin("1234");
   BT.setTimeout(timeout); 
+  String msg = "BT Connect - Status --> Connected: " + String(BT.connected()) + " Timeout: " + String(BT.getTimeout()) + " isClosed: " + String(BT.isClosed()) + " isReady: " + String(BT.isReady());
+  Log(msg, true);
   Log("Bluetooth started - Timeout: " + String(timeout) + " ms", true);
-
   #ifdef DEBUG
     BTScanResults* BTSCan = BT.discover(30 * 1280); // Discover devices for 30 seconds
     Log("Bluetooth discoverd devices: " + String(BTSCan->getCount()), true);
@@ -1305,6 +1311,7 @@ void BTDisconnect() {
   Log("Bluetooth disconnect");
   StatusIndicatorBT = TFT_DARKGREY;
   BT.disconnect();
+  BT.end(); 
 }
 
 void BTSetRelais(int relais, bool state) {
