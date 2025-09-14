@@ -12,7 +12,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.94b";
+const char VERSION[] = "0.95a";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -40,6 +40,7 @@ struct trip {
   int maxSpeed = 0;
   int startSoC = 0;
   int endSoC = 0;
+  bool toSend = false;
 };
 struct CANValues {
   int ODO = 0;
@@ -109,11 +110,11 @@ unsigned long CanMessagesProcessed = 0;
 unsigned long CanMessagesLastRecived = 0;
 float Value_Battery_Current_Buffer = 0;
 trip thisTrip; // Trip data structure
+trip RTC_FAST_ATTR lastTrip; // Last Trip data structure
 CANValues canValues; // CAN values structure
 Charge thisCharge;
 bool TripActive = false;
 bool DataToSend = false;
-bool TripDataToSend = false;
 bool ChargeDataToSend = false;
 unsigned long StatusIndicatorStatus = TFT_DARKGREY;
 unsigned long StatusIndicatorCAN = TFT_DARKGREY;
@@ -124,6 +125,8 @@ bool IsSleeping = false;
 bool IsCharging = false;
 unsigned int BTReconnectCounter = 0;
 bool BTisStarted = false;
+float avgkWh = 9;
+int SoCchangeDetection = 0;
 
 // put function declarations here:
 void CanConnect();
@@ -140,7 +143,7 @@ void ConnectWIFIAndSendData();
 bool SendDataSimpleAPI();
 void SendRemoteLogSimpleAPI(String message);
 bool SendChargeInfoSimpleAPI();
-bool SendTripInfosSimpleAPI();
+bool SendTripInfosSimpleAPI(trip tripToSend);
 void SerialPrintValues();
 void TripRecording();
 void SleepLightStart();
@@ -264,16 +267,16 @@ void loop() {
       if (!BT.connected()) {
         Log("BT Relais not connected! Reconnect Count: " + String(BTReconnectCounter), true);
         BTReconnectCounter++;
-        if (BTReconnectCounter <= 2) {if ( BTConnect(1000)) {BTReconnectCounter = 0;} }
-      }
-      else if (BT.connected() && canValues.Ready != 1)
-      {
-        BTDisconnect();
+        if (BTReconnectCounter <= 2) {if ( BTConnect(3000)) {BTReconnectCounter = 0;} }
       }
     }
     else {
       BTConnect(10000);
     }
+  }
+  if (canValues.Ready != 1 && BTisStarted) { // Disconnect BT when car is not ready
+    Log ("Car not ready - Disconnect BT Relais", true);
+    BTDisconnect();
   }
 
   // Reversing Light
@@ -303,6 +306,10 @@ void loop() {
   if (canValues.Ready == 1 && canValues.Speed > 0 && !TripActive) {
     TripActive = true;
     Log("Trip started at " + String(thisTrip.startTime) + " with ODO: " + String(thisTrip.startKM));
+    
+    if (thisTrip.toSend == true) {
+      lastTrip = thisTrip; // Save last trip for sending
+    }
     // Reset Trip data
     thisTrip.startTime = 0;
     thisTrip.endTime = 0;
@@ -311,6 +318,7 @@ void loop() {
     thisTrip.maxSpeed = 0;
     thisTrip.startSoC = canValues.SoC;
     thisTrip.endSoC = canValues.SoC;
+    thisTrip.toSend = false;
   } 
   if (currentMillis - TripRecordingLastRun >= TripRecordInterval && TripActive) {
     TripRecordingLastRun = currentMillis;
@@ -321,7 +329,7 @@ void loop() {
   if (canValues.Ready == 0 && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
     TripActive = false;
     if (((thisTrip.endTime - thisTrip.startTime) / 1000 / 60) > 2) { // Datenübertragung nur Touren +ber 2 Minuten
-      TripDataToSend = true;
+      thisTrip.toSend = true;
     }
     
     // Show Trip results
@@ -343,7 +351,7 @@ void loop() {
 
     Log(" Charging started", true);
   }
-  // Chekc if chargeing has ended
+  // Check if chareging has ended
   if (IsCharging && canValues.OBCRemainingMinutes == -1) {
     IsCharging = false;
     thisCharge.endSoC = canValues.SoC;
@@ -367,7 +375,7 @@ void loop() {
   }
 
   // Send Data  
-  if (DataToSend && (currentMillis - SendDataLastRun >= SendDataInterval) && (canValues.Speed < 1 && canValues.Handbrake)) //send in interval if ignition is off
+  if ((currentMillis - SendDataLastRun >= SendDataInterval) && (canValues.Speed < 1 && canValues.Handbrake) && (DataToSend || thisTrip.toSend || ChargeDataToSend)) //send in interval if ignition is off
   {
     SendDataLastRun = currentMillis;
     ConnectWIFIAndSendData();
@@ -530,7 +538,8 @@ void CANCheckMessage(){
         
         // Main Battery Voltage and Current
         case 0x580: {
-          DataToSend = true;StatusIndicatorCAN = TFT_BLUE;
+          DataToSend = true;
+          StatusIndicatorCAN = TFT_BLUE;
           if (!canMsg.len == 8) {Log("CAN: Wrong Lenght"); break;}
 
           // Current
@@ -772,18 +781,16 @@ void DisplayMainUI() {
   tft.fillRect(24, 142, 45, 20, COLOR_BACKGROUND); // Reset background
   tft.drawString(String(tempAverage,1)+ "C", 25, 143, 2); 
 
+  // Right Arc (12V Battery or Trip avg Consumption)
   String rightArcString;
   if ( TripActive ) {
     // consumption per 100km
-    float drivenKM = (thisTrip.endKM - thisTrip.startKM) / 10;
-    int drivenSoC = thisTrip.startSoC - thisTrip.endSoC;
-    float cunsumption100km = (drivenSoC * 0.06) / drivenKM * 100;
-    rightArcString = String(cunsumption100km, 1) + "kW";
-    arcLenght = map(cunsumption100km, 6, 12, 0, 45);
-    if ( cunsumption100km > 12) { valuecolor = TFT_RED; }
-    else if ( cunsumption100km > 10) { valuecolor = TFT_ORANGE; }
-    else if ( cunsumption100km > 9) { valuecolor = TFT_YELLOW; }
-    else if ( cunsumption100km < 7.5) { valuecolor = TFT_CYAN; }
+    rightArcString = String(avgkWh, 1) + "kW";
+    arcLenght = map(avgkWh, 6, 12, 0, 45);
+    if ( avgkWh > 12) { valuecolor = TFT_RED; }
+    else if ( avgkWh > 10) { valuecolor = TFT_ORANGE; }
+    else if ( avgkWh > 9) { valuecolor = TFT_YELLOW; }
+    else if ( avgkWh < 7.5) { valuecolor = TFT_CYAN; }
     else { valuecolor = 0x2520; }
   }
   else {
@@ -826,35 +833,32 @@ void DisplayMainUI() {
   tft.drawString("Status", 73, 195);
 
   // WIFI Indicator
-  tft.drawRoundRect(122, 188, 55, 20, 8, COLOR_ALMOSTBLACK);
+  tft.fillRoundRect(122, 188, 55, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorWIFI); 
   tft.setTextSize(1);
   tft.drawString("WIFI", 139, 195);
 
   // BT Indicator
-  unsigned long BTBackground;
   unsigned long BTText;
   if (StatusIndicatorBT == TFT_YELLOW) {
-    BTBackground = TFT_YELLOW;
-    BTText = TFT_BLACK;
+    tft.setTextColor(TFT_BLACK);
+    tft.fillRoundRect(76, 213, 25, 20, 8, TFT_YELLOW);
   }
   else {
-    BTBackground = COLOR_ALMOSTBLACK;
-    BTText = StatusIndicatorBT;
+    tft.setTextColor(StatusIndicatorBT);
+    tft.fillRoundRect(76, 213, 25, 20, 8, COLOR_ALMOSTBLACK);
   }
-  tft.drawRoundRect(76, 213, 25, 20, 8, BTBackground);
-  tft.setTextColor(BTText);
   tft.setTextSize(1);
   tft.drawString("BT", 83, 219);
 
   // CAN Indicator
-  tft.drawRoundRect(105, 213, 30, 20, 8, COLOR_ALMOSTBLACK);
+  tft.fillRoundRect(105, 213, 30, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorCAN);
   tft.setTextSize(1);
   tft.drawString("CAN", 111, 219);
 
   // Tx Indicator
-  tft.drawRoundRect(139, 213, 25, 20, 8, COLOR_ALMOSTBLACK);
+  tft.fillRoundRect(139, 213, 25, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorTx);
   tft.setTextSize(1);
   tft.drawString("Tx", 146, 219);
@@ -987,12 +991,14 @@ void DisplayChargingResult() {
 void ConnectWIFIAndSendData() {
   if (WIFICheckConnection()) {
     if (DataToSend) { if (SendDataSimpleAPI()) { DataToSend = false; } }
-    if (TripDataToSend) { if (SendTripInfosSimpleAPI()) { TripDataToSend = false; }}
+    if (lastTrip.toSend) { if (SendTripInfosSimpleAPI(thisTrip)) { lastTrip.toSend = false; delay(100);}}
+    if (thisTrip.toSend) { if (SendTripInfosSimpleAPI(thisTrip)) { thisTrip.toSend = false; }}
     if (ChargeDataToSend) { if ( SendChargeInfoSimpleAPI()) { ChargeDataToSend = false; } }   
   }
   else if (WIFIConnect()) {
     if (DataToSend) { if (SendDataSimpleAPI()) { DataToSend = false; } }
-    if (TripDataToSend) { if (SendTripInfosSimpleAPI()) { TripDataToSend = false; }}
+    if (lastTrip.toSend) { if (SendTripInfosSimpleAPI(thisTrip)) { lastTrip.toSend = false; delay(100);}}
+    if (thisTrip.toSend) { if (SendTripInfosSimpleAPI(thisTrip)) { thisTrip.toSend = false; }}
     if (ChargeDataToSend) { if ( SendChargeInfoSimpleAPI()) { ChargeDataToSend = false; } }   
   }
 }
@@ -1107,20 +1113,20 @@ bool SendChargeInfoSimpleAPI() {
   }
 }
 
-bool SendTripInfosSimpleAPI() {
-  Log("Send Charge Info Log:");
+bool SendTripInfosSimpleAPI(trip tripToSend) {
+  Log("Send Trip Inf:");
   HTTPClient http;
 
-  float drivenKM = (thisTrip.endKM - thisTrip.startKM) / 10;
-  int drivenMin = (thisTrip.endTime - thisTrip.startTime) / 1000 / 60;
-  int drivenSoC = thisTrip.startSoC - thisTrip.endSoC;
+  float drivenKM = (tripToSend.endKM - tripToSend.startKM) / 10;
+  int drivenMin = (tripToSend.endTime - tripToSend.startTime) / 1000 / 60;
+  int drivenSoC = tripToSend.startSoC - tripToSend.endSoC;
   // SimpleAPI set values bulk
   String URL = "http://" + String(YourSimpleAPI_IP) + ":" + String(YourSimpleAPI_Port) + "/setBulk?user=" + String(YourSimpleAPI_User) + "&pass=" + YourSimpleAPI_Password;
   String DataURLEncoded = "";
-  DataURLEncoded += "&0_userdata.0.topolino.trip.consumption=" + String((float)((thisTrip.endSoC - thisTrip.startSoC) * 0.06) * -1, 1);
-  DataURLEncoded += "&0_userdata.0.topolino.trip.dauer=" + String((thisTrip.endTime - thisTrip.startTime) / 1000 / 60);
-  DataURLEncoded += "&0_userdata.0.topolino.trip.km=" + String((thisTrip.endKM - thisTrip.startKM) / 10, 1);
-  DataURLEncoded += "&0_userdata.0.topolino.trip.maxSpeed=" + String(thisTrip.maxSpeed);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.consumption=" + String((float)((tripToSend.endSoC - tripToSend.startSoC) * 0.06) * -1, 1);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.dauer=" + String((tripToSend.endTime - tripToSend.startTime) / 1000 / 60);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.km=" + String((tripToSend.endKM - tripToSend.startKM) / 10, 1);
+  DataURLEncoded += "&0_userdata.0.topolino.trip.maxSpeed=" + String(tripToSend.maxSpeed);
   DataURLEncoded += "&0_userdata.0.topolino.trip.SpeedAvg=" + String((drivenKM / drivenMin) * 60, 1);
   DataURLEncoded += "&0_userdata.0.topolino.trip.consumptionAvg=" + String((drivenSoC * 0.06) / drivenKM * 100,1);
   DataURLEncoded += "&ack=true";
@@ -1172,6 +1178,14 @@ void TripRecording() {
   thisTrip.endTime = millis();
   thisTrip.endKM = canValues.ODO;  
   if (thisTrip.endSoC == 0 || thisTrip.endSoC > canValues.SoC) { thisTrip.endSoC = canValues.SoC; }
+
+  if (SoCchangeDetection != thisTrip.endSoC) {
+    SoCchangeDetection = thisTrip.endSoC;
+    float drivenKM = (thisTrip.endKM - thisTrip.startKM) / 10;
+    int drivenSoC = thisTrip.startSoC - thisTrip.endSoC;
+    avgkWh = (drivenSoC * 0.06) / drivenKM * 100;
+    Log("New average Consumption calculated: " + String(avgkWh, 1) + " kWh/100km");
+  }
 }
 
 void SleepLightStart() {
@@ -1230,13 +1244,13 @@ void SleepLightStart() {
   tft.drawCentreString("sleeping...", 120, 125, 1);
 
   // WIFI Indicator
-  tft.drawRoundRect(122, 188, 55, 20, 8, StatusIndicatorWIFI);
+  tft.fillRoundRect(122, 188, 55, 20, 8, StatusIndicatorWIFI);
   tft.setTextColor(TFT_BLACK); 
   tft.setTextSize(1);
   tft.drawString("WIFI", 139, 195);
 
   // Tx Indicator
-  tft.drawRoundRect(139, 213, 25, 20, 8, StatusIndicatorTx);
+  tft.fillRoundRect(139, 213, 25, 20, 8, StatusIndicatorTx);
   tft.setTextColor(TFT_BLACK);
   tft.setTextSize(1);
   tft.drawString("Tx", 146, 219);
@@ -1284,8 +1298,9 @@ void DebugFakeValues() {
 }
 
 void Log(String message, bool RemoteLog) {
-  Serial.println(message);
-  TelnetStream.println(message);
+  String timestamp = String(millis() / 1000.0);
+  Serial.println(timestamp + " > " + message);
+  TelnetStream.println(timestamp + " > " +message);
   if (RemoteLog) {
     SendRemoteLogSimpleAPI(message);
   }
