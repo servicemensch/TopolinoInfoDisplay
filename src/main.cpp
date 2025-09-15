@@ -12,7 +12,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.95a";
+const char VERSION[] = "0.95b";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -309,6 +309,7 @@ void loop() {
     
     if (thisTrip.toSend == true) {
       lastTrip = thisTrip; // Save last trip for sending
+      Log("Last Trip saved for later transmition", true);
     }
     // Reset Trip data
     thisTrip.startTime = 0;
@@ -328,7 +329,7 @@ void loop() {
   // Check current Trip has ended
   if (canValues.Ready == 0 && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
     TripActive = false;
-    if (((thisTrip.endTime - thisTrip.startTime) / 1000 / 60) > 2) { // Datenübertragung nur Touren +ber 2 Minuten
+    if (((thisTrip.endTime - thisTrip.startTime) / 1000 / 60) > 2) { // Only trips longer than 2 minutes will be transmitted
       thisTrip.toSend = true;
     }
     
@@ -349,14 +350,17 @@ void loop() {
     thisCharge.startTime = currentMillis;
     tft.fillScreen(COLOR_BACKGROUND);
 
-    Log(" Charging started", true);
+    Log("Charging started", true);
   }
   // Check if chareging has ended
   if (IsCharging && canValues.OBCRemainingMinutes == -1) {
     IsCharging = false;
     thisCharge.endSoC = canValues.SoC;
     thisCharge.endTime = currentMillis;
-    ChargeDataToSend = true;
+    if (((thisCharge.endTime - thisCharge.startTime) / 1000 / 60 ) > 5) { //only charges longer than 5 minutes will be transmitted
+      ChargeDataToSend = true;
+    }
+
     BTReconnectCounter = 0;
     Log("Charging has ended", true);
 
@@ -833,32 +837,32 @@ void DisplayMainUI() {
   tft.drawString("Status", 73, 195);
 
   // WIFI Indicator
-  tft.fillRoundRect(122, 188, 55, 20, 8, COLOR_ALMOSTBLACK);
+  tft.drawRoundRect(122, 188, 55, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorWIFI); 
   tft.setTextSize(1);
   tft.drawString("WIFI", 139, 195);
 
   // BT Indicator
-  unsigned long BTText;
   if (StatusIndicatorBT == TFT_YELLOW) {
     tft.setTextColor(TFT_BLACK);
     tft.fillRoundRect(76, 213, 25, 20, 8, TFT_YELLOW);
   }
   else {
     tft.setTextColor(StatusIndicatorBT);
-    tft.fillRoundRect(76, 213, 25, 20, 8, COLOR_ALMOSTBLACK);
+    tft.fillRoundRect(76, 213, 25, 20, 8, COLOR_BACKGROUND);
+    tft.drawRoundRect(76, 213, 25, 20, 8, COLOR_ALMOSTBLACK);
   }
   tft.setTextSize(1);
   tft.drawString("BT", 83, 219);
 
   // CAN Indicator
-  tft.fillRoundRect(105, 213, 30, 20, 8, COLOR_ALMOSTBLACK);
+  tft.drawRoundRect(105, 213, 30, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorCAN);
   tft.setTextSize(1);
   tft.drawString("CAN", 111, 219);
 
   // Tx Indicator
-  tft.fillRoundRect(139, 213, 25, 20, 8, COLOR_ALMOSTBLACK);
+  tft.drawRoundRect(139, 213, 25, 20, 8, COLOR_ALMOSTBLACK);
   tft.setTextColor(StatusIndicatorTx);
   tft.setTextSize(1);
   tft.drawString("Tx", 146, 219);
@@ -991,13 +995,13 @@ void DisplayChargingResult() {
 void ConnectWIFIAndSendData() {
   if (WIFICheckConnection()) {
     if (DataToSend) { if (SendDataSimpleAPI()) { DataToSend = false; } }
-    if (lastTrip.toSend) { if (SendTripInfosSimpleAPI(thisTrip)) { lastTrip.toSend = false; delay(100);}}
+    if (lastTrip.toSend) { if (SendTripInfosSimpleAPI(lastTrip)) { lastTrip.toSend = false; delay(100);}}
     if (thisTrip.toSend) { if (SendTripInfosSimpleAPI(thisTrip)) { thisTrip.toSend = false; }}
     if (ChargeDataToSend) { if ( SendChargeInfoSimpleAPI()) { ChargeDataToSend = false; } }   
   }
   else if (WIFIConnect()) {
     if (DataToSend) { if (SendDataSimpleAPI()) { DataToSend = false; } }
-    if (lastTrip.toSend) { if (SendTripInfosSimpleAPI(thisTrip)) { lastTrip.toSend = false; delay(100);}}
+    if (lastTrip.toSend) { if (SendTripInfosSimpleAPI(lastTrip)) { lastTrip.toSend = false; delay(100);}}
     if (thisTrip.toSend) { if (SendTripInfosSimpleAPI(thisTrip)) { thisTrip.toSend = false; }}
     if (ChargeDataToSend) { if ( SendChargeInfoSimpleAPI()) { ChargeDataToSend = false; } }   
   }
