@@ -216,9 +216,9 @@ void setup() {
     case ESP_SLEEP_WAKEUP_TIMER:    message = "Wakeup caused by timer"; break;
     case ESP_SLEEP_WAKEUP_TOUCHPAD: message = "Wakeup caused by touchpad"; break;
     case ESP_SLEEP_WAKEUP_ULP:      message = "Wakeup caused by ULP program"; break;
-    default:                        message = "Wakeup was not caused by deep sleep: %d\n", wakeupReason; break;
+    default:                        message = "Wakeup was not caused by deep sleep: " + wakeupReason; break;
   }
-  Log(message + " LastTrip Data to Send? " + String(lastTrip.toSend), true);  
+  Log(message + " LastTrip Data to Send: " + String(lastTrip.toSend), true);  
   digitalWrite(ONBOARD_LED, LOW);
   tft.fillScreen(COLOR_BACKGROUND);
 
