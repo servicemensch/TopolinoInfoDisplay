@@ -12,7 +12,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.95b";
+const char VERSION[] = "0.95c";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -31,16 +31,17 @@ const char VERSION[] = "0.95b";
 #define COLOR_BG_RED 0x3000
 #define COLOR_TOPOLINO 0x05f5
 #define COLOR_GREY 0xa554
+#define COLOR_LIGHTRED 0xfacb
 
 struct trip {
-  unsigned long startTime = 0;
+  unsigned long startTime;
   unsigned long endTime;
-  float startKM = 0;
+  float startKM;
   float endKM;
-  int maxSpeed = 0;
-  int startSoC = 0;
-  int endSoC = 0;
-  bool toSend = false;
+  int maxSpeed;
+  int startSoC;
+  int endSoC;
+  bool toSend;
 };
 struct CANValues {
   int ODO = 0;
@@ -98,7 +99,7 @@ unsigned long ReversingLightLastRun = 0;
 unsigned long BTConnectLastRun = 0;
 
 // Deep Sleep Timeout
-#define DEEP_SLEEP_TIMEOUT 15 * 60 * 1000 // 15 minutes in milliseconds1
+#define DEEP_SLEEP_TIMEOUT 15 * 60 * 1000 // 15 minutes in milliseconds
 
 // Bluetooth relais module
 uint8_t BT_Slave_MAC[6] = {0x59, 0x95, 0xA4, 0x50, 0x71, 0x78}; // 59:95:A4:50:71:78
@@ -110,7 +111,7 @@ unsigned long CanMessagesProcessed = 0;
 unsigned long CanMessagesLastRecived = 0;
 float Value_Battery_Current_Buffer = 0;
 trip thisTrip; // Trip data structure
-trip RTC_FAST_ATTR lastTrip; // Last Trip data structure
+trip RTC_DATA_ATTR lastTrip; // Last Trip data structure
 CANValues canValues; // CAN values structure
 Charge thisCharge;
 bool TripActive = false;
@@ -207,6 +208,17 @@ void setup() {
 
   // Setup sequence finished
   Log("TopolinoInfoDisplay started - Version: " + String(VERSION), true);
+  int wakeupReason = esp_sleep_get_wakeup_cause();
+  String message = "unknown wakeup";
+  switch (wakeupReason) {
+    case ESP_SLEEP_WAKEUP_EXT0:     message = "Wakeup caused by external signal using RTC_IO"; break;
+    case ESP_SLEEP_WAKEUP_EXT1:     message = "Wakeup caused by external signal using RTC_CNTL"; break;
+    case ESP_SLEEP_WAKEUP_TIMER:    message = "Wakeup caused by timer"; break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD: message = "Wakeup caused by touchpad"; break;
+    case ESP_SLEEP_WAKEUP_ULP:      message = "Wakeup caused by ULP program"; break;
+    default:                        message = "Wakeup was not caused by deep sleep: %d\n", wakeupReason; break;
+  }
+  Log(message + " LastTrip Data to Send? " + String(lastTrip.toSend), true);  
   digitalWrite(ONBOARD_LED, LOW);
   tft.fillScreen(COLOR_BACKGROUND);
 
@@ -230,7 +242,7 @@ void loop() {
 
     if (StatusIndicatorStatus == TFT_WHITE) {
       if (TripActive) { StatusIndicatorStatus = TFT_YELLOW; }
-      else { StatusIndicatorStatus = TFT_GREEN; }
+      else if (canValues.Ready) { StatusIndicatorStatus = TFT_GREEN; }
     }
     else {
       StatusIndicatorStatus = TFT_WHITE;
@@ -451,7 +463,7 @@ void CanConnect () {
     } 
   else {
     Log("ERROR: Initializing CAN-Module failed! ErrCode: " + String(CanError));
-    StatusIndicatorCAN = TFT_RED;
+    StatusIndicatorCAN = COLOR_LIGHTRED;
     }
   CanMessagesLastRecived = millis();
 }
@@ -688,7 +700,7 @@ bool WIFICheckConnection() {
   }
   else {
     Log("WIFI NOT connected! Status: " + String(WiFi.status()));
-    StatusIndicatorWIFI = TFT_RED;
+    StatusIndicatorWIFI = COLOR_LIGHTRED;
     return false;
   }
 }
@@ -738,7 +750,7 @@ void DisplayMainUI() {
     int arcLenght = map(canValues.Current, -150, 0, 240, 150);
     if (arcLenght > 240) {arcLenght = 240;}
     if (arcLenght < 151) {arcLenght = 151;}
-    if (canValues.Current < -75) {valuecolor = TFT_RED;} else {valuecolor = TFT_YELLOW;}
+    if (canValues.Current < -75) {valuecolor = COLOR_LIGHTRED;} else {valuecolor = TFT_YELLOW;}
     tft.drawSmoothArc(120,120, 120, 105, 150, arcLenght, valuecolor, COLOR_BACKGROUND, true);
   }
   else if (canValues.Current >02) {
@@ -774,7 +786,7 @@ void DisplayMainUI() {
   int arcLenght = map(tempAverage, -10, 50, 45, 90);
   if (arcLenght < 46) { arcLenght = 46;}
   if (arcLenght > 90) { arcLenght = 90;}
-  if (tempAverage > 45) { valuecolor = TFT_RED; }
+  if (tempAverage > 45) { valuecolor = COLOR_LIGHTRED; }
   else if (tempAverage < 5) { valuecolor = TFT_BLUE; }
   else if (tempAverage < 20) { valuecolor = TFT_YELLOW; }
   else { valuecolor = 0x2520; }
@@ -791,7 +803,7 @@ void DisplayMainUI() {
     // consumption per 100km
     rightArcString = String(avgkWh, 1) + "kW";
     arcLenght = map(avgkWh, 6, 12, 0, 45);
-    if ( avgkWh > 12) { valuecolor = TFT_RED; }
+    if ( avgkWh > 12) { valuecolor = COLOR_LIGHTRED; }
     else if ( avgkWh > 10) { valuecolor = TFT_ORANGE; }
     else if ( avgkWh > 9) { valuecolor = TFT_YELLOW; }
     else if ( avgkWh < 7.5) { valuecolor = TFT_CYAN; }
@@ -801,7 +813,7 @@ void DisplayMainUI() {
   // 12Volt Battery
     rightArcString = String(canValues.Battery, 1) + "V";
     arcLenght = map(canValues.Battery, 11.5, 14.5, 0, 45); 
-    if (canValues.Battery < 11.5) { valuecolor = TFT_RED; }
+    if (canValues.Battery < 11.5) { valuecolor = COLOR_LIGHTRED; }
     else if (canValues.Battery < 12.0) { valuecolor = TFT_YELLOW; }
     else { valuecolor = 0x2520; }
   }
@@ -823,7 +835,7 @@ void DisplayMainUI() {
 
   // SoC
   tft.setTextSize(2);
-  if (canValues.SoC < 15) { tft.setTextColor(TFT_RED); }
+  if (canValues.SoC < 15) { tft.setTextColor(COLOR_LIGHTRED); }
   else if (canValues.SoC < 30) { tft.setTextColor(TFT_YELLOW); }
   else if (canValues.SoC > 90) { tft.setTextColor(TFT_DARKCYAN); }
   else { tft.setTextColor(COLOR_GREY); }
@@ -1060,7 +1072,7 @@ bool SendDataSimpleAPI() {
     return true; 
   }
   else {
-    StatusIndicatorTx = TFT_RED;
+    StatusIndicatorTx = COLOR_LIGHTRED;
     Log("HTTP Response Code: " + String(httpResponseCode));
     
     http.end();
@@ -1342,7 +1354,7 @@ bool BTConnect(int timeout) {
   }
   else {
     Log("Bluetooth connect FAILED!", true);
-    StatusIndicatorBT = TFT_RED;
+    StatusIndicatorBT = COLOR_LIGHTRED;
     return false;
   }
 }
