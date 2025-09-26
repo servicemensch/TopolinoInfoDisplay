@@ -12,7 +12,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.95c";
+const char VERSION[] = "0.96";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -31,7 +31,7 @@ const char VERSION[] = "0.95c";
 #define COLOR_BG_RED 0x3000
 #define COLOR_TOPOLINO 0x05f5
 #define COLOR_GREY 0xa554
-#define COLOR_LIGHTRED 0xfacb
+#define COLOR_LIGHTRED 0xfa08
 
 struct trip {
   unsigned long startTime;
@@ -111,7 +111,11 @@ unsigned long CanMessagesProcessed = 0;
 unsigned long CanMessagesLastRecived = 0;
 float Value_Battery_Current_Buffer = 0;
 trip thisTrip; // Trip data structure
-trip RTC_DATA_ATTR lastTrip; // Last Trip data structure
+trip RTC_DATA_ATTR lastTrip1; // Last Trip data structure
+trip RTC_DATA_ATTR lastTrip2; // Last Trip data structure
+trip RTC_DATA_ATTR lastTrip3; // Last Trip data structure
+trip RTC_DATA_ATTR lastTrip4; // Last Trip data structure
+trip RTC_DATA_ATTR lastTrip5; // Last Trip data structure
 CANValues canValues; // CAN values structure
 Charge thisCharge;
 bool TripActive = false;
@@ -167,6 +171,7 @@ void setup() {
   
   //Set Pins
   pinMode(ONBOARD_LED, OUTPUT); // Set the built-in LED pin as output
+
   pinMode(CAN_CS, OUTPUT);
   pinMode(CAN_INTERRUPT, INPUT_PULLUP);
   pinMode(DISPLAY_POWER_PIN, OUTPUT);
@@ -218,7 +223,7 @@ void setup() {
     case ESP_SLEEP_WAKEUP_ULP:      message = "Wakeup caused by ULP program"; break;
     default:                        message = "Wakeup was not caused by deep sleep: " + wakeupReason; break;
   }
-  Log(message + " LastTrip Data to Send: " + String(lastTrip.toSend), true);  
+  Log(message + " lastTrip1 Data to Send: " + String(lastTrip1.toSend), true);  
   digitalWrite(ONBOARD_LED, LOW);
   tft.fillScreen(COLOR_BACKGROUND);
 
@@ -320,7 +325,11 @@ void loop() {
     Log("Trip started at " + String(thisTrip.startTime) + " with ODO: " + String(thisTrip.startKM));
     
     if (thisTrip.toSend == true) {
-      lastTrip = thisTrip; // Save last trip for sending
+      lastTrip5 = lastTrip4;
+      lastTrip4 = lastTrip3;
+      lastTrip3 = lastTrip2; 
+      lastTrip2 = lastTrip1;
+      lastTrip1 = thisTrip;  // Save last trip for sending
       Log("Last Trip saved for later transmition", true);
     }
     // Reset Trip data
@@ -1007,14 +1016,22 @@ void DisplayChargingResult() {
 void ConnectWIFIAndSendData() {
   if (WIFICheckConnection()) {
     if (DataToSend) { if (SendDataSimpleAPI()) { DataToSend = false; } }
-    if (lastTrip.toSend) { if (SendTripInfosSimpleAPI(lastTrip)) { lastTrip.toSend = false; delay(100);}}
-    if (thisTrip.toSend) { if (SendTripInfosSimpleAPI(thisTrip)) { thisTrip.toSend = false; }}
+    if (lastTrip5.toSend) { if (SendTripInfosSimpleAPI(lastTrip5)) { lastTrip5.toSend = false; Log("Last Trip 5 submitted", true); delay(100);}}
+    if (lastTrip4.toSend) { if (SendTripInfosSimpleAPI(lastTrip4)) { lastTrip4.toSend = false; Log("Last Trip 4 submitted", true); delay(100);}}
+    if (lastTrip3.toSend) { if (SendTripInfosSimpleAPI(lastTrip3)) { lastTrip3.toSend = false; Log("Last Trip 3 submitted", true); delay(100);}}
+    if (lastTrip2.toSend) { if (SendTripInfosSimpleAPI(lastTrip2)) { lastTrip2.toSend = false; Log("Last Trip 2 submitted", true); delay(100);}}
+    if (lastTrip1.toSend) { if (SendTripInfosSimpleAPI(lastTrip1)) { lastTrip1.toSend = false; Log("Last Trip 1 submitted", true); delay(100);}}
+    if (thisTrip.toSend) { if (SendTripInfosSimpleAPI(thisTrip)) { thisTrip.toSend = false;  Log("This Trip submitted", true); }}
     if (ChargeDataToSend) { if ( SendChargeInfoSimpleAPI()) { ChargeDataToSend = false; } }   
   }
   else if (WIFIConnect()) {
     if (DataToSend) { if (SendDataSimpleAPI()) { DataToSend = false; } }
-    if (lastTrip.toSend) { if (SendTripInfosSimpleAPI(lastTrip)) { lastTrip.toSend = false; delay(100);}}
-    if (thisTrip.toSend) { if (SendTripInfosSimpleAPI(thisTrip)) { thisTrip.toSend = false; }}
+    if (lastTrip5.toSend) { if (SendTripInfosSimpleAPI(lastTrip5)) { lastTrip5.toSend = false; Log("Last Trip 5 submitted", true); delay(100);}}
+    if (lastTrip4.toSend) { if (SendTripInfosSimpleAPI(lastTrip4)) { lastTrip4.toSend = false; Log("Last Trip 4 submitted", true); delay(100);}}
+    if (lastTrip3.toSend) { if (SendTripInfosSimpleAPI(lastTrip3)) { lastTrip3.toSend = false; Log("Last Trip 3 submitted", true); delay(100);}}
+    if (lastTrip2.toSend) { if (SendTripInfosSimpleAPI(lastTrip2)) { lastTrip2.toSend = false; Log("Last Trip 2 submitted", true); delay(100);}}
+    if (lastTrip1.toSend) { if (SendTripInfosSimpleAPI(lastTrip1)) { lastTrip1.toSend = false; Log("Last Trip 1 submitted", true); delay(100);}}
+    if (thisTrip.toSend) { if (SendTripInfosSimpleAPI(thisTrip)) { thisTrip.toSend = false;  Log("This Trip submitted", true); }}
     if (ChargeDataToSend) { if ( SendChargeInfoSimpleAPI()) { ChargeDataToSend = false; } }   
   }
 }
@@ -1041,6 +1058,13 @@ bool SendDataSimpleAPI() {
   if (canValues.RemainingDistanceUp) { DataURLEncoded += "&0_userdata.0.topolino.RemainingKM=" + String(canValues.SoC * 0.75); }
   if (canValues.GearUp) { DataURLEncoded += "&0_userdata.0.topolino.gear=" + String(canValues.Gear); }
   if (canValues.SpeedUp) { DataURLEncoded += "&0_userdata.0.topolino.speed=" + String(canValues.Speed); }
+  
+  if (DataURLEncoded == "") {
+    Log("No new can data to send", true);
+    StatusIndicatorTx = TFT_GREEN;
+    return true; 
+  }
+
   DataURLEncoded += "&ack=true";
 
   Log(" URL: " + String(URL) + String(DataURLEncoded)); 
@@ -1155,7 +1179,7 @@ bool SendTripInfosSimpleAPI(trip tripToSend) {
   Log(" HTTP Response Code: " + String(httpResponseCode));
 
   if (httpResponseCode >= 200 && httpResponseCode <= 299) {
-    Log("SendTripInfosSimpleAPI OK", true);
+    Log("SendTripInfosSimpleAPI OK");
     http.end();
     return true;
   }
