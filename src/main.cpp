@@ -12,7 +12,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.96";
+const char VERSION[] = "0.96b";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -208,6 +208,9 @@ void setup() {
   ArduinoOTA.setHostname("TopolinoInfoDisplayOTA");
   ArduinoOTA.begin();
 
+  // Connect BT MModule
+  BTConnect(10000);
+
   // Minimal Time for Boot Screen
   while (millis() < 3000) { delay(100); }
 
@@ -278,7 +281,7 @@ void loop() {
   }
 
   // Check BT connection to Relais box
-  if (currentMillis - BTConnectLastRun > 30000 && (canValues.Ready == 1 || canValues.Gear != "?")) { // Try to reconnect every 30 seconds
+  if (currentMillis - BTConnectLastRun > 30000 && (canValues.Ready == 1 || (canValues.Gear == "N" || canValues.Gear == "R" || canValues.Gear == "D") )) { // Try to reconnect every 30 seconds
     BTConnectLastRun = currentMillis;
     if (BTisStarted) {
       if (!BT.connected()) {
@@ -291,11 +294,13 @@ void loop() {
       BTConnect(10000);
     }
   }
+  /* Deactivated due to always on BT Module
   if ((canValues.Ready != 1 || canValues.Gear == "-") && BTisStarted) { // Disconnect BT when car is not ready
-    Log ("Car not ready - Disconnect BT Relais", true);
+    Log ("Car not ready - BT Relais OFF", true);
     BTSetRelais(1, false); // Turn off reversing light
     BTDisconnect();
   }
+    */
 
   // Reversing Light
   if (currentMillis - ReversingLightLastRun >= 500 && BTisStarted) {
