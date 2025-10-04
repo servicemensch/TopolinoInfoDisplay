@@ -223,7 +223,7 @@ void setup() {
     case ESP_SLEEP_WAKEUP_ULP:      message = "Wakeup caused by ULP program"; break;
     default:                        message = "Wakeup was not caused by deep sleep: " + wakeupReason; break;
   }
-  Log(message + " lastTrip1 Data to Send: " + String(lastTrip1.toSend), true);  
+  Log(message, true);  
   digitalWrite(ONBOARD_LED, LOW);
   tft.fillScreen(COLOR_BACKGROUND);
 
@@ -278,7 +278,7 @@ void loop() {
   }
 
   // Check BT connection to Relais box
-  if (currentMillis - BTConnectLastRun > 30000 && canValues.Ready == 1) { // Try to reconnect every 30 seconds
+  if (currentMillis - BTConnectLastRun > 30000 && (canValues.Ready == 1 || canValues.Gear != "?")) { // Try to reconnect every 30 seconds
     BTConnectLastRun = currentMillis;
     if (BTisStarted) {
       if (!BT.connected()) {
@@ -291,8 +291,9 @@ void loop() {
       BTConnect(10000);
     }
   }
-  if (canValues.Ready != 1 && BTisStarted) { // Disconnect BT when car is not ready
+  if ((canValues.Ready != 1 || canValues.Gear == "-") && BTisStarted) { // Disconnect BT when car is not ready
     Log ("Car not ready - Disconnect BT Relais", true);
+    BTSetRelais(1, false); // Turn off reversing light
     BTDisconnect();
   }
 
@@ -320,7 +321,7 @@ void loop() {
   }
 
   // Check for new trip recording
-  if (canValues.Ready == 1 && canValues.Speed > 0 && !TripActive) {
+  if (canValues.Speed > 0 && !TripActive) {
     TripActive = true;
     Log("Trip started at " + String(thisTrip.startTime) + " with ODO: " + String(thisTrip.startKM));
     
@@ -348,7 +349,7 @@ void loop() {
   }
 
   // Check current Trip has ended
-  if (canValues.Ready == 0 && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
+  if ((canValues.Ready == 0 || canValues.Gear == "-" || canValues.Gear == "?")  && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
     TripActive = false;
     if (((thisTrip.endTime - thisTrip.startTime) / 1000 / 60) > 2) { // Only trips longer than 2 minutes will be transmitted
       thisTrip.toSend = true;
@@ -887,6 +888,12 @@ void DisplayMainUI() {
   tft.setTextColor(StatusIndicatorTx);
   tft.setTextSize(1);
   tft.drawString("Tx", 146, 219);
+
+  // Gear (for testing)
+  tft.setTextColor(COLOR_ALMOSTBLACK, COLOR_BACKGROUND, true);
+  tft.setTextSize(2);
+  tft.drawString(canValues.Gear, 210, 85);
+
 }
 
 void DisplayTripResults() {
@@ -938,12 +945,12 @@ void DisplayTripResults() {
   tft.drawLine(positionX +167, positionY +33, positionX +183, positionY +18, TFT_WHITE);
   // Akkuverbrauch
   positionY += 43;
-  tft.fillSmoothRoundRect(65, positionY, 110, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
+  tft.fillSmoothRoundRect(60, positionY, 120, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
   tft.setTextSize(2);
   tft.setTextColor(COLOR_TOPOLINO);
-  tft.drawString("Akku:", 72, positionY +13);
+  tft.drawString("Akku:", 67, positionY +13);
   tft.setTextColor(TFT_WHITE);
-  tft.drawString(String(drivenSoC * -1) + "%", 132, positionY +13);
+  tft.drawString(String(drivenSoC * -1) + "%", 127, positionY +13);
 
   }
 
