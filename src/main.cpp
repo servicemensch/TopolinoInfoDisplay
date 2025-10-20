@@ -12,7 +12,7 @@
 
 //#define DEBUG
 
-const char VERSION[] = "0.96b";
+const char VERSION[] = "0.96c";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -130,7 +130,7 @@ bool IsSleeping = false;
 bool IsCharging = false;
 unsigned int BTReconnectCounter = 0;
 bool BTisStarted = false;
-float avgkWh = 9;
+float avgkWh = 10;
 int SoCchangeDetection = 0;
 
 // put function declarations here:
@@ -219,7 +219,7 @@ void setup() {
   int wakeupReason = esp_sleep_get_wakeup_cause();
   String message = "unknown wakeup";
   switch (wakeupReason) {
-    case ESP_SLEEP_WAKEUP_EXT0:     message = "Wakeup caused by external signal using RTC_IO"; break;
+    case ESP_SLEEP_WAKEUP_EXT0:     message = "Wakeup caused by CAN message"; break;
     case ESP_SLEEP_WAKEUP_EXT1:     message = "Wakeup caused by external signal using RTC_CNTL"; break;
     case ESP_SLEEP_WAKEUP_TIMER:    message = "Wakeup caused by timer"; break;
     case ESP_SLEEP_WAKEUP_TOUCHPAD: message = "Wakeup caused by touchpad"; break;
@@ -287,7 +287,7 @@ void loop() {
       if (!BT.connected()) {
         Log("BT Relais not connected! Reconnect Count: " + String(BTReconnectCounter), true);
         BTReconnectCounter++;
-        if (BTReconnectCounter <= 2) {if ( BTConnect(3000)) {BTReconnectCounter = 0;} }
+        if (BTReconnectCounter <= 1) {if ( BTConnect(3000)) {BTReconnectCounter = 0;} }
       }
     }
     else {
@@ -354,7 +354,7 @@ void loop() {
   }
 
   // Check current Trip has ended
-  if ((canValues.Ready == 0 || canValues.Gear == "-" || canValues.Gear == "?")  && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
+  if ((canValues.Ready == 0 || canValues.Gear == "-" || canValues.Gear == "?" || (currentMillis - CanMessagesLastRecived) > (60 * 1000))  && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
     TripActive = false;
     if (((thisTrip.endTime - thisTrip.startTime) / 1000 / 60) > 2) { // Only trips longer than 2 minutes will be transmitted
       thisTrip.toSend = true;
@@ -817,9 +817,9 @@ void DisplayMainUI() {
   if ( TripActive ) {
     // consumption per 100km
     rightArcString = String(avgkWh, 1) + "kW";
-    arcLenght = map(avgkWh, 6, 12, 0, 45);
-    if ( avgkWh > 12) { valuecolor = COLOR_LIGHTRED; }
-    else if ( avgkWh > 10) { valuecolor = TFT_ORANGE; }
+    arcLenght = map(avgkWh, 6, 15, 0, 45);
+    if ( avgkWh > 13) { valuecolor = COLOR_LIGHTRED; }
+    else if ( avgkWh > 11) { valuecolor = TFT_ORANGE; }
     else if ( avgkWh > 9) { valuecolor = TFT_YELLOW; }
     else if ( avgkWh < 7.5) { valuecolor = TFT_CYAN; }
     else { valuecolor = 0x2520; }
@@ -894,11 +894,24 @@ void DisplayMainUI() {
   tft.setTextSize(1);
   tft.drawString("Tx", 146, 219);
 
-  // Gear (for testing)
+  //Gear (for testing)
+  /*
   tft.setTextColor(COLOR_ALMOSTBLACK, COLOR_BACKGROUND, true);
   tft.setTextSize(2);
-  tft.drawString(canValues.Gear, 210, 85);
+  tft.drawString(canValues.Gear, 210, 90);
+  */
 
+  // Saved trips counter (for testing)
+  tft.setTextColor(COLOR_ALMOSTBLACK, COLOR_BACKGROUND, true);
+  tft.setTextSize(2);
+  int savedTrips = 0;
+  if (thisTrip.toSend) { savedTrips++; }
+  if (lastTrip1.toSend) { savedTrips++; }
+  if (lastTrip2.toSend) { savedTrips++; }
+  if (lastTrip3.toSend) { savedTrips++; } 
+  if (lastTrip4.toSend) { savedTrips++; }
+  if (lastTrip5.toSend) { savedTrips++; }
+  tft.drawString(savedTrips + "T", 210, 90);
 }
 
 void DisplayTripResults() {
@@ -1320,7 +1333,7 @@ void SleepDeepStart() {
   // Turn off display power
   digitalWrite(DISPLAY_POWER_PIN, LOW);
 
-  delay(500);
+  delay(1000);
   // Go to deep sleep
   esp_deep_sleep_start();
 }
