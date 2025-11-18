@@ -10,9 +10,9 @@
 #include <BluetoothSerial.h>
 #include <img.h>
 
-//#define DEBUG
+#define DEBUG
 
-const char VERSION[] = "0.96c";
+const char VERSION[] = "0.96g";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -354,9 +354,9 @@ void loop() {
   }
 
   // Check current Trip has ended
-  if ((canValues.Ready == 0 || canValues.Gear == "-" || canValues.Gear == "?" || (currentMillis - CanMessagesLastRecived) > (60 * 1000))  && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
+  if ((canValues.Ready == 0 || canValues.Gear == "-" || canValues.Gear == "?" || (currentMillis - CanMessagesLastRecived) > (10 * 1000))  && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
     TripActive = false;
-    if (((thisTrip.endTime - thisTrip.startTime) / 1000 / 60) > 2) { // Only trips longer than 2 minutes will be transmitted
+    if (((thisTrip.endTime - thisTrip.startTime) / 1000 / 60) > 3 && (thisTrip.startKM - thisTrip.endKM > 0.1)) { // Only trips longer than 3 minutes and 100meter will be transmitted
       thisTrip.toSend = true;
     }
     
@@ -413,7 +413,7 @@ void loop() {
   }
   else if (canValues.Speed > 1 && WiFi.status() != WL_NO_SHIELD)  { // deactivate tranismitting when driving
     #ifdef DEBUG
-    Log("WIFI Stratus: " + String(WiFi.status()));
+    Log("WIFI Status: " + String(WiFi.status()));
     #endif
     WIFIDisconnect();
     StatusIndicatorWIFI = TFT_DARKGREY;
@@ -556,14 +556,26 @@ void CANCheckMessage(){
           // Temp 1
           int value1 = canMsg.data[0];
           //Log("- CAN Value Temp1: " + String(value1));
+          if (value1 > 32767) {
+            value1 = value1 - 65536; // Convert to signed int
+          }
           canValues.Temp1 = value1;
           canValues.Temp1Up = true;
+          #ifdef DEBUG
+            Log("Temp1 RAW value: " + String(canMsg.data[0], BIN));
+          #endif
 
           //Temp 2
           int value2 = canMsg.data[3];
           //Log("- CAN Value Temp2: " + String(value2));
+          if (value2 > 32767) {
+            value2 = value2 - 65536; // Convert to signed int
+          }
           canValues.Temp2 = value2;
           canValues.Temp2Up = true;
+          #ifdef DEBUG
+            Log("Temp2 RAW value: " + String(canMsg.data[3], BIN));
+          #endif
           }          
           break;
         
@@ -894,6 +906,8 @@ void DisplayMainUI() {
   tft.setTextSize(1);
   tft.drawString("Tx", 146, 219);
 
+#ifdef DEBUG
+  // Debug
   //Gear (for testing)
   /*
   tft.setTextColor(COLOR_ALMOSTBLACK, COLOR_BACKGROUND, true);
@@ -911,7 +925,9 @@ void DisplayMainUI() {
   if (lastTrip3.toSend) { savedTrips++; } 
   if (lastTrip4.toSend) { savedTrips++; }
   if (lastTrip5.toSend) { savedTrips++; }
-  tft.drawString(savedTrips + "T", 210, 90);
+  tft.drawString(String(savedTrips) + "T", 210, 90);
+#endif
+  
 }
 
 void DisplayTripResults() {
@@ -1260,6 +1276,9 @@ void SleepLightStart() {
   StatusIndicatorStatus = TFT_DARKCYAN;
   StatusIndicatorTx = TFT_DARKGREY;
   StatusIndicatorWIFI = TFT_DARKGREY;
+
+  // Disable revers light
+  BTSetRelais(1, false);
 
   int i = 0;
   do {
