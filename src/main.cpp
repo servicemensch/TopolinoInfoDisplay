@@ -11,8 +11,9 @@
 #include <img.h>
 
 #define DEBUG
+//#define DEBUGBT
 
-const char VERSION[] = "0.96g";
+const char VERSION[] = "0.96h";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -261,9 +262,6 @@ void loop() {
   if (currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval && !IsSleeping && !IsCharging){
     DisplayRefreshLastRun = currentMillis;
     DisplayMainUI();
-    #ifdef DEBUG
-    DebugFakeValues();
-    #endif
   }
 
   // Check CAN Messages
@@ -281,7 +279,7 @@ void loop() {
   }
 
   // Check BT connection to Relais box
-  if (currentMillis - BTConnectLastRun > 30000 && (canValues.Ready == 1 || (canValues.Gear == "N" || canValues.Gear == "R" || canValues.Gear == "D") )) { // Try to reconnect every 30 seconds
+  if (currentMillis - BTConnectLastRun > 5 * 60000 && (canValues.Ready == 1 || (canValues.Gear == "N" || canValues.Gear == "R" || canValues.Gear == "D") )) { // Try to reconnect every 5 minutes
     BTConnectLastRun = currentMillis;
     if (BTisStarted) {
       if (!BT.connected()) {
@@ -354,7 +352,7 @@ void loop() {
   }
 
   // Check current Trip has ended
-  if ((canValues.Ready == 0 || canValues.Gear == "-" || canValues.Gear == "?" || (currentMillis - CanMessagesLastRecived) > (10 * 1000))  && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
+  if ((canValues.Ready == 0 || canValues.Gear == "-" || canValues.Gear == "?" || (currentMillis - CanMessagesLastRecived) > (20 * 1000))  && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
     TripActive = false;
     if (((thisTrip.endTime - thisTrip.startTime) / 1000 / 60) > 3 && (thisTrip.startKM - thisTrip.endKM > 0.1)) { // Only trips longer than 3 minutes and 100meter will be transmitted
       thisTrip.toSend = true;
@@ -413,7 +411,7 @@ void loop() {
   }
   else if (canValues.Speed > 1 && WiFi.status() != WL_NO_SHIELD)  { // deactivate tranismitting when driving
     #ifdef DEBUG
-    Log("WIFI Status: " + String(WiFi.status()));
+      Log("WIFI Status: " + String(WiFi.status()));
     #endif
     WIFIDisconnect();
     StatusIndicatorWIFI = TFT_DARKGREY;
@@ -1405,7 +1403,7 @@ bool BTConnect(int timeout) {
   String msg = "BT Connect - Status --> Connected: " + String(BT.connected()) + " Timeout: " + String(BT.getTimeout()) + " isClosed: " + String(BT.isClosed()) + " isReady: " + String(BT.isReady());
   Log(msg, true);
   Log("Bluetooth started - Timeout: " + String(timeout) + " ms", true);
-  #ifdef DEBUG
+  #ifdef DEBUGBT
     BTScanResults* BTSCan = BT.discover(30 * 1280); // Discover devices for 30 seconds
     Log("Bluetooth discoverd devices: " + String(BTSCan->getCount()), true);
     for (int i = 0; i < BTSCan->getCount(); i++) {
