@@ -64,8 +64,10 @@ Rename ./config/config_example.h to config.h and fill the values
 | 0_userdata.0.topolino.Ready | drive ready state |
 | 0_userdata.0.topolino.RemainingKM | propossed kilometers left in drive battery |
 | 0_userdata.0.topolino.SoC | State of Charge - drive battery in percent |
-| 0_userdata.0.topolino.gera | selected gear |
+| 0_userdata.0.topolino.gear | selected gear |
 | 0_userdata.0.topolino.speed | current speed |
+
+Additionally the Trip data is reported to IOBroker.
 
 ---
 # ⚠ Warning / Hint
