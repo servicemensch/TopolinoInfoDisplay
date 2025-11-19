@@ -3,7 +3,7 @@ Shows some details of the electronic system of the car, send it to a central (ho
 
 
 ## Drive screen
-![default screen](info/hardware/v2-1.28_round_TFT/screen_mainui.jpg)
+![drive screen](info/hardware/v2-1.28_round_TFT/screen_mainui.jpg)
 
 Shown information:
 - Currently used power: multi-color bar + value (kW)
@@ -27,12 +27,16 @@ Shown information:
 - Average consumption (kwh / 100km)
 
 ## Charging information
+![charging screen](info/hardware/v2-1.28_round_TFT/screen_charging.jpg)
+
 Shown information during charging:
 - Charging power in ampere
 - SoC start value for this charge
 - Current SoC value
 - Minutes since charge started (duration)
 - Drive battery temperature
+
+![charged screen](info/hardware/v2-1.28_round_TFT/screen_chargeresults.jpg)
 
 Shown information after charge ended:
 - Power charged (kwh)
