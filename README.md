@@ -1,11 +1,44 @@
 # Topolino Info Display
-Shows some details of the electronic system of the car, send it to a central (houseautomation-) system for further processing and status information.
+Shows some details of the electronic system of the car, send it to a central (houseautomation-) system for further processing and status information. Additional a reversing light is controlled via a Bluetooht relaisbox.
 
 
 ## Drive screen
 ![default screen](info/hardware/v2-1.28_round_TFT/screen_mainui.jpg)
-## Trip information:
+
+Shown information:
+- Currently used power: multi-color bar + value (kW)
+- Drive battery temperature: multi-color bar + value (°C)
+- Drive battery voltage
+- Drive battery stae pof charge (SoC %)
+- 12V Battery voltage (shown before start driving)
+- Average consumption (kWh) for the current trip
+- Indicators for status, WIFI connection, Bluetooth, data transmition, CAN-Bus data communication
+
+## Trip information
 ![trip screen](info/hardware/v2-1.28_round_TFT/screen_tripresults.jpg)
+
+Shown information:
+- Trip duration in minutes
+- Trip distance in km
+- Maximum speed reached
+- Average speed of the trip
+- Consumed energy in kwh
+- Consumed energy in percent (SoC)
+- Average consumption (kwh / 100km)
+
+## Charging information
+Shown information during charging:
+- Charging power in ampere
+- SoC start value for this charge
+- Current SoC value
+- Minutes since charge started (duration)
+- Drive battery temperature
+
+Shown information after charge ended:
+- Power charged (kwh)
+- Start Soc + end SoC of the charge
+- Drive battery temperature
+- Duration opf the charge (Minutes)
 
 ## Car compatibility:
 - Fiat Topolino (Testcar: MY 2025)
@@ -13,8 +46,8 @@ Shows some details of the electronic system of the car, send it to a central (ho
 - Citroen Ami
 
 ---
-# Hardware (Development enviroment):
-## Version 1
+# Hardware:
+## Version 1 (inital Development enviroment / no longer used)
 - [LilyGo T-Display S3](https://lilygo.cc/products/t-display-s3?variant=42284559827125) (ESP32 + 1,9" 8Bit LCD Screen)
 - [MCP 2515 Can Bus module](https://www.az-delivery.de/products/mcp2515-can-bus-modul-1)
 - 3D printed OBD2 plug
@@ -29,6 +62,7 @@ Shows some details of the electronic system of the car, send it to a central (ho
 ### Wireing (Version 2):
 ![v2 wireing diagram](info/hardware/v2-1.28_round_TFT/HWv2_wireing.png)
 
+---
 # Software:
 Build as **PlatformIO** project in **Visual Studio Code**.
 Data transmission designed forseen to submit values to **ioBroker** via **SimpleAPI**.
@@ -50,7 +84,10 @@ Additional:
 ## Configuration
 Rename ./config/config_example.h to config.h and fill the values
 
-## ioBroker states
+## ioBroker integration
+Data Send to "SimpleAPI" adapter via HTTP REST calls.
+
+### States
 | iobroker object | value|
 |--|--|
 | 0_userdata.0.topolino.12VBatt | Voltage of the 12V Battery system |
@@ -72,4 +109,8 @@ Additionally the Trip data is reported to IOBroker.
 ---
 # ⚠ Warning / Hint
 **This is NOT a "ready to use" solution!**
-You have compile it by your own. Most likley you have to adapt it to your specific eviroment. 
+You have to adapt it to your specific eviroment. You have to asamble the hardware by your own. You have compile it by your own. There is no support or guarantee! Take your reponsibility!
+
+---
+# Thank You
+Thanky you to the project [AMI-Display](https://github.com/flrahe/AMI-Display) which inspired me to start this project and provided the information about the CAN-Messages of this "car".
