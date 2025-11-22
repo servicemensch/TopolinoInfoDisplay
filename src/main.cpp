@@ -10,10 +10,10 @@
 #include <BluetoothSerial.h>
 #include <img.h>
 
-#define DEBUG
+//#define DEBUG
 //#define DEBUGBT
 
-const char VERSION[] = "0.96h";
+const char VERSION[] = "0.96i";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -551,11 +551,12 @@ void CANCheckMessage(){
           DataToSend = true;
           if (!canMsg.len == 8) {Log("CAN: Wrong Lenght"); break;}
           
+          // 1 byte signed integer value
           // Temp 1
           int value1 = canMsg.data[0];
           //Log("- CAN Value Temp1: " + String(value1));
-          if (value1 > 32767) {
-            value1 = value1 - 65536; // Convert to signed int
+          if (value1 >= 128) {
+            value1 = value1 - 256; // Convert to signed int
           }
           canValues.Temp1 = value1;
           canValues.Temp1Up = true;
@@ -566,8 +567,8 @@ void CANCheckMessage(){
           //Temp 2
           int value2 = canMsg.data[3];
           //Log("- CAN Value Temp2: " + String(value2));
-          if (value2 > 32767) {
-            value2 = value2 - 65536; // Convert to signed int
+          if (value1 >= 128) {
+            value1 = value1 - 256; // Convert to signed int
           }
           canValues.Temp2 = value2;
           canValues.Temp2Up = true;
