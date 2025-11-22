@@ -13,7 +13,7 @@
 //#define DEBUG
 //#define DEBUGBT
 
-const char VERSION[] = "0.96i";
+const char VERSION[] = "0.97";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -567,8 +567,8 @@ void CANCheckMessage(){
           //Temp 2
           int value2 = canMsg.data[3];
           //Log("- CAN Value Temp2: " + String(value2));
-          if (value1 >= 128) {
-            value1 = value1 - 256; // Convert to signed int
+          if (value2 >= 128) {
+            value2 = value2 - 256; // Convert to signed int
           }
           canValues.Temp2 = value2;
           canValues.Temp2Up = true;
