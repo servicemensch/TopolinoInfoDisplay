@@ -1,15 +1,15 @@
 # Topolino Info Display
 Shows some details of the electronic system of the car, send it to a central (houseautomation-) system for further processing and status information. Additional a reversing light is controlled via a Bluetooht relaisbox.
-
+Project Infomration could be found here:  [servicemensch.info](https://www.servicemensch.info/Offline/Topolino-Info-Display,ARTIKEL,15.html) (german)
 
 ## Drive screen
 ![drive screen](info/hardware/v2-1.28_round_TFT/screen_mainui.jpg)
 
 Shown information:
-- Currently used power: multi-color bar + value (kW)
+- Currently used power: multi-color bar + value (kW or Amps)
 - Drive battery temperature: multi-color bar + value (°C)
 - Drive battery voltage
-- Drive battery stae pof charge (SoC %)
+- Drive battery state of charge (SoC %)
 - 12V Battery voltage (shown before start driving)
 - Average consumption (kWh) for the current trip
 - Indicators for status, WIFI connection, Bluetooth, data transmition, CAN-Bus data communication

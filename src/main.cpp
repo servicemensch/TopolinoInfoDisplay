@@ -7,13 +7,23 @@
 #include <UrlEncode.h>
 #include <ACAN2515.h>
 #include <TelnetStream.h>
-#include <BluetoothSerial.h>
 #include <img.h>
 
 //#define DEBUG
 //#define DEBUGBT
+#define BTClassic
+//#define BTLowEnergy
 
-const char VERSION[] = "0.97";
+#ifdef BTClassic
+  #include <BluetoothSerial.h>
+#endif
+
+#ifdef BTLowEnergy
+  #include <NimBLEDevice.h>
+#endif
+
+
+const char VERSION[] = "0.99";
 #define ShowConsumptionAsKW true
 
 #define DISPLAY_POWER_PIN 22
@@ -83,7 +93,10 @@ struct Charge {
 TFT_eSPI tft = TFT_eSPI();
 SPIClass hspi = SPIClass(HSPI);
 ACAN2515 can((int)CAN_CS, hspi, (int)CAN_INTERRUPT);
-BluetoothSerial BT;
+
+#ifdef BTClassic
+  BluetoothSerial BT;
+#endif  
 
 #include "../config/config.h"
 
@@ -161,6 +174,8 @@ void Log(String message);
 bool BTConnect(int timeout);
 void BTDisconnect();
 void BTSetRelais(int relais, bool state);
+void BTScan();
+
 
 // =====================================================================================================
 // Make everything ready ===============================================================================
@@ -209,9 +224,6 @@ void setup() {
   ArduinoOTA.setHostname("TopolinoInfoDisplayOTA");
   ArduinoOTA.begin();
 
-  // Connect BT MModule
-  BTConnect(10000);
-
   // Minimal Time for Boot Screen
   while (millis() < 3000) { delay(100); }
 
@@ -225,11 +237,14 @@ void setup() {
     case ESP_SLEEP_WAKEUP_TIMER:    message = "Wakeup caused by timer"; break;
     case ESP_SLEEP_WAKEUP_TOUCHPAD: message = "Wakeup caused by touchpad"; break;
     case ESP_SLEEP_WAKEUP_ULP:      message = "Wakeup caused by ULP program"; break;
-    default:                        message = "Wakeup was not caused by deep sleep: " + wakeupReason; break;
+    default:                        message = "Wakeup was caused by (power) reset"; break;
   }
   Log(message, true);  
   digitalWrite(ONBOARD_LED, LOW);
   tft.fillScreen(COLOR_BACKGROUND);
+
+  delay(1000);
+  BTScan();
 
 #ifdef DEBUG
   // Debug
@@ -278,30 +293,31 @@ void loop() {
     StatusIndicatorCAN =  TFT_DARKGREY;
   }
 
-  // Check BT connection to Relais box
-  if (currentMillis - BTConnectLastRun > 5 * 60000 && (canValues.Ready == 1 || (canValues.Gear == "N" || canValues.Gear == "R" || canValues.Gear == "D") )) { // Try to reconnect every 5 minutes
-    BTConnectLastRun = currentMillis;
-    if (BTisStarted) {
-      if (!BT.connected()) {
-        Log("BT Relais not connected! Reconnect Count: " + String(BTReconnectCounter), true);
-        BTReconnectCounter++;
-        if (BTReconnectCounter <= 1) {if ( BTConnect(3000)) {BTReconnectCounter = 0;} }
+  #ifdef BTClassic
+    // Check BT connection to Relais box
+    if ((currentMillis - BTConnectLastRun > 5 * 60000 || (BTConnectLastRun == 0 && currentMillis > 15000)) && (canValues.Ready == 1 || (canValues.Gear == "N" || canValues.Gear == "R" || canValues.Gear == "D") )) { // Try to reconnect every 5 minutes
+      BTConnectLastRun = currentMillis;
+      if (BTisStarted) {
+        if (!BT.connected()) {
+          Log("BT Relais not connected! Reconnect Count: " + String(BTReconnectCounter), true);
+          BTReconnectCounter++;
+          if (BTReconnectCounter <= 2) {if ( BTConnect(3000)) {BTReconnectCounter = 0;} }
+        }
+      }
+      else {
+        BTConnect(30000);
       }
     }
-    else {
-      BTConnect(10000);
+    /* Deactivated due to always on BT Module
+    if ((canValues.Ready != 1 || canValues.Gear == "-") && BTisStarted) { // Disconnect BT when car is not ready
+      Log ("Car not ready - BT Relais OFF", true);
+      BTSetRelais(1, false); // Turn off reversing light
+      BTDisconnect();
     }
-  }
-  /* Deactivated due to always on BT Module
-  if ((canValues.Ready != 1 || canValues.Gear == "-") && BTisStarted) { // Disconnect BT when car is not ready
-    Log ("Car not ready - BT Relais OFF", true);
-    BTSetRelais(1, false); // Turn off reversing light
-    BTDisconnect();
-  }
-    */
+      */
 
-  // Reversing Light
-  if (currentMillis - ReversingLightLastRun >= 500 && BTisStarted) {
+    // Reversing Light
+    if (currentMillis - ReversingLightLastRun >= 500 && BTisStarted) {
     ReversingLightLastRun = currentMillis;
     if (BT.connected()) {
       if (canValues.Gear == "R") {
@@ -322,6 +338,7 @@ void loop() {
       }
     }
   }
+  #endif
 
   // Check for new trip recording
   if (canValues.Speed > 0 && !TripActive) {
@@ -715,6 +732,9 @@ bool WIFIConnect(){
     if ( i > 5) { break; }
   }
 
+  if (WiFi.status () == WL_CONNECTED) {
+    Log("WIFI Connected! IP: " + (WiFi.localIP().toString()), true);
+  }
   return WIFICheckConnection();
 }
 
@@ -817,7 +837,7 @@ void DisplayMainUI() {
   else if (tempAverage < 20) { valuecolor = TFT_YELLOW; }
   else { valuecolor = 0x2520; }
   tft.setTextSize(1);
-  tft.setTextColor(valuecolor);
+  tft.setTextColor(COLOR_GREY);
   tft.drawSmoothArc(120,120, 121, 110, 45, 90, COLOR_GREY, COLOR_BACKGROUND,true);
   tft.drawSmoothArc(120,120, 121, 110, 45, arcLenght, valuecolor, COLOR_BACKGROUND, true);
   tft.fillRect(24, 142, 45, 20, COLOR_BACKGROUND); // Reset background
@@ -846,7 +866,7 @@ void DisplayMainUI() {
   if (arcLenght < 1) {arcLenght = 1;}
   if (arcLenght > 45) {arcLenght = 45;}
   tft.setTextSize(1);
-  tft.setTextColor(valuecolor);
+  tft.setTextColor(COLOR_GREY);
   tft.drawSmoothArc(120,120, 121, 110, 270, 315, COLOR_GREY, COLOR_BACKGROUND, true); // reset
   tft.drawSmoothArc(120,120, 121, 110, 315 - arcLenght, 315, valuecolor, COLOR_BACKGROUND, true); // value
   tft.fillRect(172, 142, 50, 18, COLOR_BACKGROUND); //Reset text background
@@ -1391,7 +1411,21 @@ void Log(String message, bool RemoteLog) {
 
 void Log(String message) { Log(message, false); }
 
+#ifdef BTClassic
 bool BTConnect(int timeout) {
+  Log("Bluetooth started - Timeout: " + String(timeout) + " ms", true);
+  // BT Connection message
+  tft.fillScreen(COLOR_BACKGROUND);
+  tft.fillSmoothRoundRect(20, 100, 200, 40, 5, COLOR_ALMOSTBLACK, COLOR_BACKGROUND);
+  tft.setTextColor(COLOR_TOPOLINO);
+  tft.setTextSize(2);
+  tft.drawCentreString("BT Connecting...", 120, 112, 1);
+  #ifdef DEBUGBT
+    tft.setTextSize(2);
+    tft.drawCentreString(String(timeout) + "sek.", 120, 140, 1);
+  #endif
+  delay(1000);
+
   BTisStarted = false;
   BT.disconnect();
   BT.clearWriteError();
@@ -1402,8 +1436,7 @@ bool BTConnect(int timeout) {
   BT.setPin("1234");
   BT.setTimeout(timeout); 
   String msg = "BT Connect - Status --> Connected: " + String(BT.connected()) + " Timeout: " + String(BT.getTimeout()) + " isClosed: " + String(BT.isClosed()) + " isReady: " + String(BT.isReady());
-  Log(msg, true);
-  Log("Bluetooth started - Timeout: " + String(timeout) + " ms", true);
+  Log(msg);
   #ifdef DEBUGBT
     BTScanResults* BTSCan = BT.discover(30 * 1280); // Discover devices for 30 seconds
     Log("Bluetooth discoverd devices: " + String(BTSCan->getCount()), true);
@@ -1417,11 +1450,13 @@ bool BTConnect(int timeout) {
   {
     Log("Bluetooth connect OK", true);
     StatusIndicatorBT = TFT_GREEN;
+    tft.fillScreen(COLOR_BACKGROUND);
     return true;
   }
   else {
     Log("Bluetooth connect FAILED!", true);
     StatusIndicatorBT = COLOR_LIGHTRED;
+    tft.fillScreen(COLOR_BACKGROUND);
     return false;
   }
 }
@@ -1474,3 +1509,65 @@ void BTSetRelais(int relais, bool state) {
 }
 
 }
+#endif
+
+#ifdef BTLowEnergy // in development
+void BTScan() {
+  Log("Bluetooth LE Scan started", true);
+  NimBLEDevice::init("");
+
+  NimBLEScan *pScan = NimBLEDevice::getScan();
+  NimBLEScanResults results = pScan->getResults(10 * 1000);
+
+  NimBLEUUID serviceUuid("ABCD");
+  Log("Bluetooth LE discoverd devices: " + String(results.getCount()), true);
+ 
+  for (int i = 0; i < results.getCount(); i++) {
+    const NimBLEAdvertisedDevice *device = results.getDevice(i);
+
+    Log("BT Device " + String(i) + "-Address: " + (device->getAddress().toString().c_str()));
+    Log("BT Device " + String(i) + "-RSSI: " + String((device->getRSSI())));
+    Log("BT Device " + String(i) + "-Services: " + String((device->getServiceUUIDCount())));
+
+    if ((device->getAddress().toString()) == "59:95:a4:50:71:78") {
+      Log("BT Relaus via BLE found: No: " + String(i), true);
+      for (int j = 0; j < device->getServiceUUIDCount(); j++) {
+        Log(" -- Service UUID " + String(j) + ": " + device->getServiceUUID(j).toString().c_str());
+      }
+
+      break;
+    }
+
+
+    if (device->isAdvertisingService(serviceUuid)) {
+      NimBLEClient *pClient = NimBLEDevice::createClient();
+
+      if (!pClient) { // Make sure the client was created
+        break;
+      }
+
+      if (pClient->connect(&device)) {
+        NimBLERemoteService *pService = pClient->getService(serviceUuid);
+
+        if (pService != nullptr) {
+          NimBLERemoteCharacteristic *pCharacteristic = pService->getCharacteristic("1234");
+
+          if (pCharacteristic != nullptr) {
+            std::string value = pCharacteristic->readValue();
+            // print or do whatever you need with the value
+          }
+        } else {
+          // failed to connect
+        }
+
+        NimBLEDevice::deleteClient(pClient);
+      }
+    }
+  }
+  Log("Bluetooth LE Scan finished", true);
+}
+
+bool BTConnect(int timeout) { return false;}
+void BTDisconnect() {}
+void BTSetRelais(int relais, bool state) {}
+#endif
