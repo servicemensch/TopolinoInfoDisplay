@@ -243,9 +243,10 @@ void setup() {
   digitalWrite(ONBOARD_LED, LOW);
   tft.fillScreen(COLOR_BACKGROUND);
 
-  delay(1000);
-  BTScan();
-
+  #ifdef BTLowEnergy
+    delay(1000);
+    BTScan();
+  #endif
 #ifdef DEBUG
   // Debug
 #endif
@@ -1438,12 +1439,7 @@ bool BTConnect(int timeout) {
   String msg = "BT Connect - Status --> Connected: " + String(BT.connected()) + " Timeout: " + String(BT.getTimeout()) + " isClosed: " + String(BT.isClosed()) + " isReady: " + String(BT.isReady());
   Log(msg);
   #ifdef DEBUGBT
-    BTScanResults* BTSCan = BT.discover(30 * 1280); // Discover devices for 30 seconds
-    Log("Bluetooth discoverd devices: " + String(BTSCan->getCount()), true);
-    for (int i = 0; i < BTSCan->getCount(); i++) {
-      BTAdvertisedDevice* device = BTSCan->getDevice(i);
-      Log("Device " + String(i) + ": " + device->getName().c_str() + " - " + device->getAddress().toString().c_str() + " - RSSI: " + String(device->getRSSI()) + " dBm");
-  }
+    BTScan();
   #endif
 
   if (BT.connect(BT_Slave_Name))
@@ -1506,8 +1502,16 @@ void BTSetRelais(int relais, bool state) {
       break;
     default:
       break;
+  }
 }
 
+void BTScan() {
+  BTScanResults* BTSCan = BT.discover(30 * 1280); // Discover devices for 30 seconds
+  Log("Bluetooth discoverd devices: " + String(BTSCan->getCount()), true);
+  for (int i = 0; i < BTSCan->getCount(); i++) {
+    BTAdvertisedDevice* device = BTSCan->getDevice(i);
+    Log("Device " + String(i) + ": " + device->getName().c_str() + " - " + device->getAddress().toString().c_str() + " - RSSI: " + String(device->getRSSI()) + " dBm");
+  }
 }
 #endif
 
