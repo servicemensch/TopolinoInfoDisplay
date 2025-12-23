@@ -9,6 +9,7 @@
 #include <TelnetStream.h>
 #include <img.h>
 
+// Compiling options
 //#define DEBUG
 //#define DEBUGBT
 #define BTClassic
@@ -22,10 +23,10 @@
   #include <NimBLEDevice.h>
 #endif
 
-
-const char VERSION[] = "0.99";
+const char VERSION[] = "1.1";
 #define ShowConsumptionAsKW true
 
+// Definitions
 #define DISPLAY_POWER_PIN 22
 #define CAN_INTERRUPT 27
 #define CAN_CS 33
@@ -100,7 +101,7 @@ ACAN2515 can((int)CAN_CS, hspi, (int)CAN_INTERRUPT);
 
 #include "../config/config.h"
 
-//Loops
+// Loops intervalls
 unsigned long DisplayRefreshLastRun = 0;
 const unsigned int DisplayRefreshInterval = 0.25 * 1000; 
 unsigned long SendDataLastRun = 0;
@@ -321,7 +322,8 @@ void loop() {
     if (currentMillis - ReversingLightLastRun >= 500 && BTisStarted) {
     ReversingLightLastRun = currentMillis;
     if (BT.connected()) {
-      if (canValues.Gear == "R") {
+      if (canValues.Gear == "R" && CanMessagesLastRecived - currentMillis < 3000) // Only activate if CAN messages are recent and car is in reverse
+        {
         BTSetRelais(1, true); // Turn on reversing light
         StatusIndicatorBT = TFT_YELLOW;
 
@@ -329,7 +331,8 @@ void loop() {
           Log("Reversing Light ON");
         #endif
       }
-      else {
+      else
+        {
         BTSetRelais(1, false); // Turn off reversing light
         StatusIndicatorBT = TFT_GREEN;
 
@@ -372,7 +375,9 @@ void loop() {
   // Check current Trip has ended
   if ((canValues.Ready == 0 || canValues.Gear == "-" || canValues.Gear == "?" || (currentMillis - CanMessagesLastRecived) > (20 * 1000))  && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
     TripActive = false;
-    if (((thisTrip.endTime - thisTrip.startTime) / 1000 / 60) > 3 && (thisTrip.startKM - thisTrip.endKM > 0.1)) { // Only trips longer than 3 minutes and 100meter will be transmitted
+    
+    // Only trips longer than 100 meter will be transmitted
+    if ( (float)((thisTrip.endKM - thisTrip.startKM) / 10) > 0.1) {
       thisTrip.toSend = true;
     }
     
@@ -833,8 +838,10 @@ void DisplayMainUI() {
   int arcLenght = map(tempAverage, -10, 50, 45, 90);
   if (arcLenght < 46) { arcLenght = 46;}
   if (arcLenght > 90) { arcLenght = 90;}
-  if (tempAverage > 45) { valuecolor = COLOR_LIGHTRED; }
+  if (tempAverage > 40) { valuecolor = COLOR_LIGHTRED; }
+  else if (tempAverage > 25) { valuecolor = TFT_ORANGE; }
   else if (tempAverage < 5) { valuecolor = TFT_BLUE; }
+  else if (tempAverage < 10) { valuecolor = TFT_CYAN; }
   else if (tempAverage < 20) { valuecolor = TFT_YELLOW; }
   else { valuecolor = 0x2520; }
   tft.setTextSize(1);
@@ -1283,7 +1290,9 @@ void TripRecording() {
   if (SoCchangeDetection != thisTrip.endSoC) {
     SoCchangeDetection = thisTrip.endSoC;
     float drivenKM = (thisTrip.endKM - thisTrip.startKM) / 10;
+    if (drivenKM < 0.1) { drivenKM = 0.1; } // avoid division by zero
     int drivenSoC = thisTrip.startSoC - thisTrip.endSoC;
+    if (drivenSoC < 1) { drivenSoC = 1; } // avoid division by zero
     avgkWh = (drivenSoC * 0.06) / drivenKM * 100;
     Log("New average Consumption calculated: " + String(avgkWh, 1) + " kWh/100km");
   }
