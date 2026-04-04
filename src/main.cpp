@@ -23,7 +23,7 @@
   #include <NimBLEDevice.h>
 #endif
 
-const char VERSION[] = "1.1";
+const char VERSION[] = "1.1a";
 #define ShowConsumptionAsKW true
 
 // Definitions
@@ -147,6 +147,7 @@ unsigned int BTReconnectCounter = 0;
 bool BTisStarted = false;
 float avgkWh = 10;
 int SoCchangeDetection = 0;
+int NoScreenupdateBefore = 0;
 
 // put function declarations here:
 void CanConnect();
@@ -258,6 +259,7 @@ void setup() {
 // Main Loop ===========================================================================================
 // =====================================================================================================
 void loop() {
+  bool ScreenResetRequired = 0;
   unsigned long currentMillis = millis();
   //Log(" - Tick: " + String(currentMillis));
 
@@ -275,8 +277,17 @@ void loop() {
     }
   }
 
+  // No Screen refresh timeout
+  if (currentMillis < NoScreenupdateBefore) {
+    ScreenResetRequired = true;
+  }
+  else if (ScreenResetRequired) {
+    ScreenResetRequired = false;
+    tft.fillScreen(COLOR_BACKGROUND);
+  }
+
   // Display Main UI / refresh Values
-  if (currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval && !IsSleeping && !IsCharging){
+  if ((currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval) && !IsSleeping && !IsCharging && (currentMillis >= NoScreenupdateBefore)){
     DisplayRefreshLastRun = currentMillis;
     DisplayMainUI();
   }
@@ -345,7 +356,7 @@ void loop() {
   #endif
 
   // Check for new trip recording
-  if (canValues.Speed > 0 && !TripActive) {
+  if (canValues.Speed > 0 && canValues.Ready == 1 && !TripActive && (currentMillis - CanMessagesLastRecived) < (5000)) {
     TripActive = true;
     Log("Trip started at " + String(thisTrip.startTime) + " with ODO: " + String(thisTrip.startKM));
     
@@ -373,7 +384,7 @@ void loop() {
   }
 
   // Check current Trip has ended
-  if ((canValues.Ready == 0 || canValues.Gear == "-" || canValues.Gear == "?" || (currentMillis - CanMessagesLastRecived) > (20 * 1000))  && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
+  if ((canValues.Ready == 0 || canValues.Gear == "-" || canValues.Gear == "?" || (currentMillis - CanMessagesLastRecived) > (10000))  && TripActive) { //was: || (canValues.Gear == "N" && canValues.Handbrake && canValues.Speed == 0)
     TripActive = false;
     
     // Only trips longer than 100 meter will be transmitted
@@ -383,12 +394,9 @@ void loop() {
     
     // Show Trip results
     DisplayTripResults();
+    NoScreenupdateBefore = millis() + 20000; // No screen updates for 20 seconds to show trip results
     //Send Data while showing Results
-    ConnectWIFIAndSendData();
-    
-    delay(20000); // Show Trip results for 20 seconds
-    tft.fillScreen(COLOR_BACKGROUND);
-    DisplayMainUI();
+    ConnectWIFIAndSendData();   
   }
 
   // Check if new charge
@@ -414,13 +422,12 @@ void loop() {
 
     // Show Charge end screen
     DisplayChargingResult();
+    NoScreenupdateBefore = millis() + 60000; // No screen updates for 60 seconds to show charging results
     ConnectWIFIAndSendData();
-    delay(60000);
-    tft.fillScreen(COLOR_BACKGROUND);
   }
 
   // Is currently Charging  
-  if (IsCharging && currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval)
+  if (IsCharging && (currentMillis - DisplayRefreshLastRun >= DisplayRefreshInterval) && (currentMillis >= NoScreenupdateBefore))
   {
     DisplayRefreshLastRun = currentMillis;
     DisplayCharging();
@@ -666,7 +673,7 @@ void CANCheckMessage(){
           canValues.RemainingDistance = value2;
           canValues.RemainingDistanceUp = true; 
           
-          //Ready indicator
+          // Ready indicator
           switch ((canMsg.data[2] & 0b00000111)) { // Check the last 3 bits
             case 0b101:
               if (canValues.Ready != 1) { BTReconnectCounter = 0 ; } // Reset BT Reconnect tries when car becomes ready to fore recoennection
@@ -788,7 +795,6 @@ void DisplayBoot() {
 }
 
 void DisplayMainUI() {
-  //tft.fillScreen(COLOR_BACKGROUND);
   int valuecolor;
   
   //Consumption Background
@@ -1016,8 +1022,6 @@ void DisplayTripResults() {
   }
 
 void DisplayCharging() {
-  //tft.fillScreen(COLOR_BACKGROUND);
-
   tft.setTextColor(COLOR_TOPOLINO, COLOR_BACKGROUND, true);
   tft.setTextSize(2);
   tft.drawString("Ladevorgang:", 42, 50, 2);
