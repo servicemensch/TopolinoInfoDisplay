@@ -23,7 +23,7 @@
   #include <NimBLEDevice.h>
 #endif
 
-const char VERSION[] = "1.1a";
+const char VERSION[] = "1.1b";
 #define ShowConsumptionAsKW true
 
 // Definitions
@@ -259,7 +259,7 @@ void setup() {
 // Main Loop ===========================================================================================
 // =====================================================================================================
 void loop() {
-  bool ScreenResetRequired = 0;
+  bool ScreenResetRequired = false;
   unsigned long currentMillis = millis();
   //Log(" - Tick: " + String(currentMillis));
 
@@ -394,7 +394,7 @@ void loop() {
     
     // Show Trip results
     DisplayTripResults();
-    NoScreenupdateBefore = millis() + 20000; // No screen updates for 20 seconds to show trip results
+    NoScreenupdateBefore = millis() + 30000; // No screen updates for 30 seconds to show trip results
     //Send Data while showing Results
     ConnectWIFIAndSendData();   
   }
