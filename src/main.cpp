@@ -24,6 +24,7 @@
 #endif
 
 const char VERSION[] = "1.1b";
+
 #define ShowConsumptionAsKW true
 
 // Definitions
@@ -395,8 +396,7 @@ void loop() {
     // Show Trip results
     DisplayTripResults();
     NoScreenupdateBefore = millis() + 30000; // No screen updates for 30 seconds to show trip results
-    //Send Data while showing Results
-    ConnectWIFIAndSendData();   
+
   }
 
   // Check if new charge
@@ -1304,7 +1304,7 @@ void TripRecording() {
 
 void SleepLightStart() {
   IsSleeping = true;
-  Log("Going to light sleep...");
+  Log("Going to light sleep...", true);
   StatusIndicatorCAN = TFT_DARKGREY;
   StatusIndicatorStatus = TFT_DARKCYAN;
   StatusIndicatorTx = TFT_DARKGREY;
