@@ -23,9 +23,10 @@
   #include <NimBLEDevice.h>
 #endif
 
-const char VERSION[] = "1.1b";
+const char VERSION[] = "1.1c";
 
 #define ShowConsumptionAsKW true
+#define ShowChargeAsKW true
 
 // Definitions
 #define DISPLAY_POWER_PIN 22
@@ -149,6 +150,7 @@ bool BTisStarted = false;
 float avgkWh = 10;
 int SoCchangeDetection = 0;
 int NoScreenupdateBefore = 0;
+bool ScreenResetRequired = false;
 
 // put function declarations here:
 void CanConnect();
@@ -260,7 +262,6 @@ void setup() {
 // Main Loop ===========================================================================================
 // =====================================================================================================
 void loop() {
-  bool ScreenResetRequired = false;
   unsigned long currentMillis = millis();
   //Log(" - Tick: " + String(currentMillis));
 
@@ -1026,8 +1027,18 @@ void DisplayCharging() {
   tft.setTextSize(2);
   tft.drawString("Ladevorgang:", 42, 50, 2);
   // Ladestrom
+  String chargingString;
+  float currentcharge = 0;
+  if (ShowChargeAsKW) {
+    currentcharge = (float)(canValues.Current * canValues.Volt / 1000) * -1;         // -#.##
+    chargingString = String(currentcharge, 2) + " kW";
+  }
+  else {
+    currentcharge = canValues.Current * -1;
+    chargingString = String(currentcharge, 1) + " A";
+  }
   tft.setTextSize(3);
-  tft.drawString(String(canValues.Current, 1) + " A", 70, 90);
+  tft.drawString(chargingString, 70, 90);
   // SoC
   tft.setTextSize(4);
   tft.setTextColor(TFT_WHITE, COLOR_BACKGROUND, true);
