@@ -23,7 +23,7 @@
   #include <NimBLEDevice.h>
 #endif
 
-const char VERSION[] = "1.1c";
+const char VERSION[] = "1.2";
 
 #define ShowConsumptionAsKW true
 #define ShowChargeAsKW true
@@ -114,6 +114,8 @@ unsigned long TripRecordingLastRun = 0;
 unsigned long KeepAliveLastRun = 0;
 unsigned long ReversingLightLastRun = 0;
 unsigned long BTConnectLastRun = 0;
+const unsigned int AVASInterval = 5 * 1000;
+unsigned long AVASLastRun = 0;
 
 // Deep Sleep Timeout
 #define DEEP_SLEEP_TIMEOUT 15 * 60 * 1000 // 15 minutes in milliseconds
@@ -151,6 +153,7 @@ float avgkWh = 10;
 int SoCchangeDetection = 0;
 int NoScreenupdateBefore = 0;
 bool ScreenResetRequired = false;
+bool AVASFirstRunDone = false;
 
 // put function declarations here:
 void CanConnect();
@@ -333,28 +336,57 @@ void loop() {
 
     // Reversing Light
     if (currentMillis - ReversingLightLastRun >= 500 && BTisStarted) {
-    ReversingLightLastRun = currentMillis;
-    if (BT.connected()) {
-      if (canValues.Gear == "R" && CanMessagesLastRecived - currentMillis < 3000) // Only activate if CAN messages are recent and car is in reverse
-        {
-        BTSetRelais(1, true); // Turn on reversing light
-        StatusIndicatorBT = TFT_YELLOW;
+      ReversingLightLastRun = currentMillis;
+      if (BT.connected()) {
+        if (canValues.Gear == "R" && CanMessagesLastRecived - currentMillis < 3000) // Only activate if CAN messages are recent and car is in reverse
+          {
+          BTSetRelais(1, true); // Turn on reversing light
+          StatusIndicatorBT = TFT_YELLOW;
 
-        #ifdef DEBUG
-          Log("Reversing Light ON");
-        #endif
-      }
-      else
-        {
-        BTSetRelais(1, false); // Turn off reversing light
-        StatusIndicatorBT = TFT_GREEN;
+          #ifdef DEBUG
+            Log("Reversing Light ON");
+          #endif
+        }
+        else
+          {
+          BTSetRelais(1, false); // Turn off reversing light
+          StatusIndicatorBT = TFT_GREEN;
 
-        #ifdef DEBUG
-          Log("Reversing Light OFF");
-        #endif
+          #ifdef DEBUG
+            Log("Reversing Light OFF");
+          #endif
+        }
       }
     }
-  }
+
+    // AVAS / EV Sound
+    if ((currentMillis - AVASLastRun >= AVASInterval || !AVASFirstRunDone == false) && BTisStarted) {
+      AVASLastRun = currentMillis;
+      if (BT.connected()) {
+        if (((canValues.Speed > 0 && canValues.Speed < 25) || canValues.Gear == "R")  && CanMessagesLastRecived - currentMillis < 3000) // Only activate if CAN messages are recent and car is moving slowly
+          {
+          BTSetRelais(2, true); // Turn on AVAS
+          #ifdef DEBUG
+            Log("AVAS ON");
+          #endif
+        }
+        else
+          {
+          BTSetRelais(2, false); // Turn off AVAS
+          #ifdef DEBUG
+            Log("AVAS OFF");
+          #endif
+        }
+      }
+
+      if (AVASFirstRunDone == false && canValues.Ready == 1) //Start Sound wehen ready
+        {
+          AVASFirstRunDone = true;
+          AVASLastRun = currentMillis + 20 * 1000;
+          BTSetRelais(2, true); // Turn on AVAS
+          Log("AVAS first run done", true);
+        }
+    }
   #endif
 
   // Check for new trip recording
@@ -846,7 +878,7 @@ void DisplayMainUI() {
   if (arcLenght < 46) { arcLenght = 46;}
   if (arcLenght > 90) { arcLenght = 90;}
   if (tempAverage > 40) { valuecolor = COLOR_LIGHTRED; }
-  else if (tempAverage > 25) { valuecolor = TFT_ORANGE; }
+  else if (tempAverage > 30) { valuecolor = TFT_ORANGE; }
   else if (tempAverage < 5) { valuecolor = TFT_BLUE; }
   else if (tempAverage < 10) { valuecolor = TFT_CYAN; }
   else if (tempAverage < 20) { valuecolor = TFT_YELLOW; }
@@ -900,8 +932,16 @@ void DisplayMainUI() {
   else if (canValues.SoC < 30) { tft.setTextColor(TFT_YELLOW); }
   else if (canValues.SoC > 90) { tft.setTextColor(TFT_DARKCYAN); }
   else { tft.setTextColor(COLOR_GREY); }
-  tft.fillRect(90, 39, 70, 20, COLOR_BACKGROUND); // Reset text background
-  tft.drawCentreString(String(canValues.SoC) + "%", 120, 40, 1);
+  tft.fillRect(60, 39, 100, 20, COLOR_BACKGROUND); // Reset text background
+  String SOCString;
+  if (TripActive) {
+    SOCString = String(canValues.SoC) + "% " +  String((((canValues.SoC * 0.06) / avgkWh) * 100), 0) + "km"; 
+  }
+  else {
+    SOCString = String(canValues.SoC) + "%";
+  }
+  tft.drawCentreString(SOCString, 120, 40, 1);
+
 
   // Status Indicator
   tft.fillRoundRect(63, 188, 55, 20, 8, StatusIndicatorStatus);
@@ -1323,6 +1363,7 @@ void SleepLightStart() {
 
   // Disable revers light
   BTSetRelais(1, false);
+  BTSetRelais(2, false);
 
   int i = 0;
   do {
@@ -1361,9 +1402,9 @@ void SleepLightStart() {
     tft.setTextSize(1);
     tft.drawString("Tx", 135, 222);
 
-    delay(1000);
+    delay(10000);
   }
-  while ( SendDataSimpleAPI() == false && i < 5);
+  while ( SendDataSimpleAPI() == false && i < 3);
 
   tft.fillScreen(TFT_BLACK);
   tft.setTextSize(3);
